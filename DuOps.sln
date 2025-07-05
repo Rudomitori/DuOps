@@ -1,10 +1,10 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Core", "DuOps.Core\DuOps.Core.csproj", "{2741D54B-A96C-4680-A2E8-9FF50F6EF766}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Core", "src\DuOps.Core\DuOps.Core.csproj", "{2741D54B-A96C-4680-A2E8-9FF50F6EF766}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Hangfire", "DuOps.Hangfire\DuOps.Hangfire.csproj", "{AB66B1F8-6F6D-4568-AD67-8F3C0EEA5D4D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Hangfire", "src\DuOps.Hangfire\DuOps.Hangfire.csproj", "{AB66B1F8-6F6D-4568-AD67-8F3C0EEA5D4D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Testing", "DuOps.Testing\DuOps.Testing.csproj", "{429C3F1E-CEF9-442B-B2DD-E4F60FC26D21}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Testing", "src\DuOps.Testing\DuOps.Testing.csproj", "{429C3F1E-CEF9-442B-B2DD-E4F60FC26D21}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
