@@ -1,6 +1,6 @@
 ﻿namespace DuOps.Core.Operations.InterResults.Definitions;
 
-public sealed class AdHocInterResultDefinition<TResult>: IInterResultDefinition<TResult>
+public sealed class AdHocInterResultDefinition<TResult> : IInterResultDefinition<TResult>
 {
     private readonly Func<TResult, string> _serialize;
     private readonly Func<string, TResult> _deserialize;
@@ -18,11 +18,7 @@ public sealed class AdHocInterResultDefinition<TResult>: IInterResultDefinition<
         _serialize = serialize;
     }
 
-    public string Serialize(
-        TResult result
-    ) => _serialize(result);
+    public string Serialize(TResult result) => _serialize(result);
 
-    public TResult Deserialize(
-        string serializedResult
-    ) => _deserialize(serializedResult);
+    public TResult Deserialize(string serializedResult) => _deserialize(serializedResult);
 }

@@ -56,10 +56,7 @@ internal static partial class OperationTelemetryLogs
         string yieldReasonMessage
     );
 
-    [LoggerMessage(
-        LogLevel.Error,
-        "{OperationDiscriminator}({OperationId}) threw an exception"
-    )]
+    [LoggerMessage(LogLevel.Error, "{OperationDiscriminator}({OperationId}) threw an exception")]
     internal static partial void LogOperationThrewException(
         this ILogger<OperationTelemetry> logger,
         Exception exception,

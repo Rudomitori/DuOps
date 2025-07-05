@@ -22,10 +22,16 @@ internal sealed class OperationPoller(
     {
         var operationId = serializedOperation.Id;
 
-        if (serializedOperation.ExecutionResult is OperationExecutionResult<string>.Finished finished)
+        if (
+            serializedOperation.ExecutionResult
+            is OperationExecutionResult<string>.Finished finished
+        )
         {
             return new OperationExecutionResult<TResult>.Finished(
-                OperationHelper.DeserializeResult(finished.Result, operationDefinition.DeserializeResult)
+                OperationHelper.DeserializeResult(
+                    finished.Result,
+                    operationDefinition.DeserializeResult
+                )
             );
         }
 
@@ -35,15 +41,14 @@ internal sealed class OperationPoller(
             yieldToken
         );
 
-        var operationImplementation = serviceProvider.GetRequiredService<IOperationImplementation<TArgs, TResult>>();
+        var operationImplementation = serviceProvider.GetRequiredService<
+            IOperationImplementation<TArgs, TResult>
+        >();
 
         var context = new OperationExecutionContext(
             operationDefinition,
             operationId,
-            serializedInterResults.ToDictionary(
-                x => (x.Discriminator, x.Key),
-                x => x.Value
-            ),
+            serializedInterResults.ToDictionary(x => (x.Discriminator, x.Key), x => x.Value),
             storage,
             telemetry,
             yieldToken
@@ -53,7 +58,10 @@ internal sealed class OperationPoller(
         TResult result;
         try
         {
-            var args = OperationHelper.DeserializeArgs(serializedOperation.Args, operationDefinition.DeserializeArgs);
+            var args = OperationHelper.DeserializeArgs(
+                serializedOperation.Args,
+                operationDefinition.DeserializeArgs
+            );
 
             result = await operationImplementation.Execute(args, context);
 
@@ -69,11 +77,7 @@ internal sealed class OperationPoller(
         }
         catch (Exception e)
         {
-            telemetry.OnOperationThrewException(
-                operationDefinition,
-                operationId,
-                e
-            );
+            telemetry.OnOperationThrewException(operationDefinition, operationId, e);
             throw;
         }
 
@@ -92,7 +96,10 @@ internal sealed class OperationPoller(
     private sealed class OperationExecutionContext(
         IOperationDefinition operationDefinition,
         OperationId operationId,
-        Dictionary<(InterResultDiscriminator Discriminator, string? Key), string> serializedInterResults,
+        Dictionary<
+            (InterResultDiscriminator Discriminator, string? Key),
+            string
+        > serializedInterResults,
         IOperationStorage storage,
         IOperationTelemetry telemetry,
         CancellationToken yieldToken
@@ -126,7 +133,12 @@ internal sealed class OperationPoller(
             IInterResultDefinition<TResult> resultDefinition
         )
         {
-            if (serializedInterResults.TryGetValue((resultDefinition.Discriminator, null), out var serializedValue))
+            if (
+                serializedInterResults.TryGetValue(
+                    (resultDefinition.Discriminator, null),
+                    out var serializedValue
+                )
+            )
             {
                 var value = OperationHelper.DeserializeInterResultValue(
                     resultDefinition.Deserialize,
@@ -146,7 +158,12 @@ internal sealed class OperationPoller(
         {
             var serializedKey = resultDefinition.SerializeKey(key);
 
-            if (serializedInterResults.TryGetValue((resultDefinition.Discriminator, serializedKey), out var serializedValue))
+            if (
+                serializedInterResults.TryGetValue(
+                    (resultDefinition.Discriminator, serializedKey),
+                    out var serializedValue
+                )
+            )
             {
                 var value = OperationHelper.DeserializeInterResultValue(
                     resultDefinition.Deserialize,
@@ -159,18 +176,24 @@ internal sealed class OperationPoller(
             return null;
         }
 
-        public IReadOnlyCollection<KeyedInterResult<TResult, TKey>> GetInterResultsOrDefault<TResult, TKey>(
-            IKeyedInterResultDefinition<TResult, TKey> resultDefinition
-        )
+        public IReadOnlyCollection<KeyedInterResult<TResult, TKey>> GetInterResultsOrDefault<
+            TResult,
+            TKey
+        >(IKeyedInterResultDefinition<TResult, TKey> resultDefinition)
         {
             return serializedInterResults
-                   .Where(x => x.Key.Discriminator == resultDefinition.Discriminator)
-                   .Select(x => new KeyedInterResult<TResult, TKey>(
-                               OperationHelper.DeserializeInterResultKey(resultDefinition.DeserializeKey, x.Key.Key),
-                               OperationHelper.DeserializeInterResultValue(resultDefinition.Deserialize, x.Value)
-                           )
-                   )
-                   .ToArray();
+                .Where(x => x.Key.Discriminator == resultDefinition.Discriminator)
+                .Select(x => new KeyedInterResult<TResult, TKey>(
+                    OperationHelper.DeserializeInterResultKey(
+                        resultDefinition.DeserializeKey,
+                        x.Key.Key
+                    ),
+                    OperationHelper.DeserializeInterResultValue(
+                        resultDefinition.Deserialize,
+                        x.Value
+                    )
+                ))
+                .ToArray();
         }
 
         public async Task<TResult> RunWithCache<TResult>(

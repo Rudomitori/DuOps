@@ -37,7 +37,10 @@ public sealed class InMemoryOperationStorage : IOperationStorage
         CancellationToken cancellationToken = default
     )
     {
-        var operationPk = new OperationPk(serializedOperation.Discriminator, serializedOperation.Id);
+        var operationPk = new OperationPk(
+            serializedOperation.Discriminator,
+            serializedOperation.Id
+        );
 
         return StoredOperations.GetOrAdd(operationPk, serializedOperation);
     }
@@ -52,13 +55,8 @@ public sealed class InMemoryOperationStorage : IOperationStorage
 
         var results = StoredIntermediateResults.GetValueOrDefault(operationPk);
         return results
-               ?.Select(x => new SerializedInterResult(
-                            x.Key.Discriminator,
-                            x.Key.Key,
-                            x.Value
-                        )
-               )
-               .ToArray() ?? [];
+                ?.Select(x => new SerializedInterResult(x.Key.Discriminator, x.Key.Key, x.Value))
+                .ToArray() ?? [];
     }
 
     public async Task AddInterResult(
@@ -80,10 +78,7 @@ public sealed class InMemoryOperationStorage : IOperationStorage
             {
                 [(resultDiscriminator, resultKey)] = interResult.Value,
             },
-            (
-                _,
-                results
-            ) =>
+            (_, results) =>
             {
                 if (!results.TryAdd((resultDiscriminator, resultKey), interResult.Value))
                 {
@@ -108,13 +103,11 @@ public sealed class InMemoryOperationStorage : IOperationStorage
 
         StoredOperations.AddOrUpdate(
             operationPk,
-            _ => throw new InvalidOperationException(
-                $"Operation {discriminator.Value} {operationId.Value} was not found"
-            ),
-            (
-                _,
-                operation
-            ) =>
+            _ =>
+                throw new InvalidOperationException(
+                    $"Operation {discriminator.Value} {operationId.Value} was not found"
+                ),
+            (_, operation) =>
             {
                 if (operation.ExecutionResult is OperationExecutionResult<string>.Finished)
                 {
@@ -125,7 +118,9 @@ public sealed class InMemoryOperationStorage : IOperationStorage
 
                 return operation with
                 {
-                    ExecutionResult = new OperationExecutionResult<string>.Finished(serializedOperationResult),
+                    ExecutionResult = new OperationExecutionResult<string>.Finished(
+                        serializedOperationResult
+                    ),
                 };
             }
         );
@@ -142,20 +137,21 @@ public sealed class InMemoryOperationStorage : IOperationStorage
 
         var serializedOperation = StoredOperations.AddOrUpdate(
             operationPk,
-            _ => throw new InvalidOperationException(
-                $"Operation {discriminator.Value} {operationId.Value} was not found"
-            ),
-            (
-                _,
-                operation
-            ) =>
+            _ =>
+                throw new InvalidOperationException(
+                    $"Operation {discriminator.Value} {operationId.Value} was not found"
+                ),
+            (_, operation) =>
             {
                 if (operation.PollingScheduleId is not null)
                 {
                     return operation;
                 }
 
-                return operation with { PollingScheduleId = scheduleId };
+                return operation with
+                {
+                    PollingScheduleId = scheduleId,
+                };
             }
         );
 

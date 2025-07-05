@@ -6,10 +6,7 @@ namespace DuOps.Core.OperationPollers;
 
 public interface IOperationExecutionContext
 {
-    Task AddInterResult<TResult>(
-        IInterResultDefinition<TResult> resultDefinition,
-        TResult value
-    );
+    Task AddInterResult<TResult>(IInterResultDefinition<TResult> resultDefinition, TResult value);
 
     InterResult<TResult>? GetInterResultOrDefault<TResult>(
         IInterResultDefinition<TResult> resultDefinition

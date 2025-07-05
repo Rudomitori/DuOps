@@ -1,22 +1,14 @@
 ﻿namespace DuOps.Core.OperationDefinitions;
 
-public interface IOperationDefinition<TArgs, TResult>: IOperationDefinition
+public interface IOperationDefinition<TArgs, TResult> : IOperationDefinition
 {
-    string SerializeArgs(
-        TArgs args
-    );
+    string SerializeArgs(TArgs args);
 
-    TArgs DeserializeArgs(
-        string serializedArgs
-    );
+    TArgs DeserializeArgs(string serializedArgs);
 
-    string SerializeResult(
-        TResult result
-    );
+    string SerializeResult(TResult result);
 
-    TResult DeserializeResult(
-        string serializedResult
-    );
+    TResult DeserializeResult(string serializedResult);
 }
 
 public interface IOperationDefinition

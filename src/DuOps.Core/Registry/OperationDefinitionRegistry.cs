@@ -9,9 +9,12 @@ internal sealed class OperationDefinitionRegistry(
     public Task InvokeCallbackWithDefinition<TCallback>(
         OperationDiscriminator discriminator,
         TCallback callback
-    ) where TCallback : IOperationDefinitionGenericCallback
+    )
+        where TCallback : IOperationDefinitionGenericCallback
     {
-        var registryItem = registryItems.FirstOrDefault(x => x.OperationDefinition.Discriminator == discriminator);
+        var registryItem = registryItems.FirstOrDefault(x =>
+            x.OperationDefinition.Discriminator == discriminator
+        );
         if (registryItem is null)
         {
             throw new InvalidOperationException(

@@ -24,7 +24,8 @@ public sealed class HangfireOperationPollingScheduler(
         CancellationToken cancellationToken
     )
     {
-        var id = backgroundJobClient.Enqueue<HangfireOperationPollingScheduler>(x => x.HangfireCallback(
+        var id = backgroundJobClient.Enqueue<HangfireOperationPollingScheduler>(x =>
+            x.HangfireCallback(
                 operationDefinition.Discriminator.Value,
                 operationId.ShardKey,
                 operationId.Value,
@@ -61,7 +62,11 @@ public sealed class HangfireOperationPollingScheduler(
 
         var operation = await GetOperation(operationDefinition, operationId, cancellationToken);
 
-        var result = await operationPoller.PollOperation(operationDefinition, operation, cancellationToken);
+        var result = await operationPoller.PollOperation(
+            operationDefinition,
+            operation,
+            cancellationToken
+        );
 
         if (result is OperationExecutionResult<TResult>.Yielded)
         {
@@ -101,7 +106,6 @@ public sealed class HangfireOperationPollingScheduler(
         );
     }
 
-
     [SuppressMessage("Major Code Smell", "S3898:Value types should implement \"IEquatable<T>\"")]
     private readonly struct TypedHangfireCallbackProxy(
         HangfireOperationPollingScheduler pollingScheduler,
@@ -109,11 +113,13 @@ public sealed class HangfireOperationPollingScheduler(
         CancellationToken cancellationToken
     ) : IOperationDefinitionGenericCallback
     {
-        public Task Invoke<TArgs, TResult>(
-            IOperationDefinition<TArgs, TResult> operationDefinition
-        )
+        public Task Invoke<TArgs, TResult>(IOperationDefinition<TArgs, TResult> operationDefinition)
         {
-            return pollingScheduler.TypedHangfireCallback(operationDefinition, operationId, cancellationToken);
+            return pollingScheduler.TypedHangfireCallback(
+                operationDefinition,
+                operationId,
+                cancellationToken
+            );
         }
     }
 }

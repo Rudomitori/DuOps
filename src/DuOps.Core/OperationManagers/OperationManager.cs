@@ -21,10 +21,7 @@ internal sealed class OperationManager(
         var operationId = operation.Id;
         var serializedOperation = definition.Serialize(operation);
 
-        serializedOperation = await storage.GetOrAdd(
-            serializedOperation,
-            cancellationToken
-        );
+        serializedOperation = await storage.GetOrAdd(serializedOperation, cancellationToken);
 
         if (operation.PollingScheduleId is null)
         {
@@ -41,7 +38,10 @@ internal sealed class OperationManager(
                 cancellationToken
             );
 
-            serializedOperation = serializedOperation with { PollingScheduleId = pollingScheduleId };
+            serializedOperation = serializedOperation with
+            {
+                PollingScheduleId = pollingScheduleId,
+            };
         }
 
         telemetry.OnOperationStartedInBackground(definition, serializedOperation);

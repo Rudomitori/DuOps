@@ -7,7 +7,5 @@ public abstract record OperationExecutionResult<TSagaResult>
         public static readonly Yielded Instance = new();
     }
 
-    public sealed record Finished(
-        TSagaResult Result
-    ) : OperationExecutionResult<TSagaResult>;
+    public sealed record Finished(TSagaResult Result) : OperationExecutionResult<TSagaResult>;
 }

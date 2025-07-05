@@ -1,6 +1,7 @@
 ﻿namespace DuOps.Core.Operations.InterResults.Definitions;
 
-public sealed class AdHocKeyedInterResultDefinition<TResult, TKey>: IKeyedInterResultDefinition<TResult, TKey>
+public sealed class AdHocKeyedInterResultDefinition<TResult, TKey>
+    : IKeyedInterResultDefinition<TResult, TKey>
 {
     private readonly Func<TResult, string> _serialize;
     private readonly Func<string, TResult> _deserialize;
@@ -24,19 +25,11 @@ public sealed class AdHocKeyedInterResultDefinition<TResult, TKey>: IKeyedInterR
         _serialize = serialize;
     }
 
-    public string Serialize(
-        TResult result
-    ) => _serialize(result);
+    public string Serialize(TResult result) => _serialize(result);
 
-    public TKey DeserializeKey(
-        string serializedKey
-    ) => _deserializeKey(serializedKey);
+    public TKey DeserializeKey(string serializedKey) => _deserializeKey(serializedKey);
 
-    public string SerializeKey(
-        TKey key
-    ) => _serializeKey(key);
+    public string SerializeKey(TKey key) => _serializeKey(key);
 
-    public TResult Deserialize(
-        string serializedResult
-    ) => _deserialize(serializedResult);
+    public TResult Deserialize(string serializedResult) => _deserialize(serializedResult);
 }

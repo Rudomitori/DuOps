@@ -4,13 +4,12 @@ namespace DuOps.Core.Registry;
 
 internal sealed record OperationDefinitionRegistryItem<TArgs, TResult>(
     IOperationDefinition<TArgs, TResult> OperationDefinition
-): IOperationDefinitionRegistryItem
+) : IOperationDefinitionRegistryItem
 {
-    IOperationDefinition IOperationDefinitionRegistryItem.OperationDefinition => OperationDefinition;
+    IOperationDefinition IOperationDefinitionRegistryItem.OperationDefinition =>
+        OperationDefinition;
 
-    public Task CallGenericCallback(
-        IOperationDefinitionGenericCallback callback
-    )
+    public Task CallGenericCallback(IOperationDefinitionGenericCallback callback)
     {
         return callback.Invoke(OperationDefinition);
     }
@@ -20,7 +19,5 @@ internal interface IOperationDefinitionRegistryItem
 {
     IOperationDefinition OperationDefinition { get; }
 
-    Task CallGenericCallback(
-        IOperationDefinitionGenericCallback callback
-    );
+    Task CallGenericCallback(IOperationDefinitionGenericCallback callback);
 }

@@ -12,7 +12,11 @@ public static class OperationExecutionContextExtensions
         Func<Task<TResult>> action
     )
     {
-        var definition = new AdHocInterResultDefinition<TResult>(discriminator, serialize, deserialize);
+        var definition = new AdHocInterResultDefinition<TResult>(
+            discriminator,
+            serialize,
+            deserialize
+        );
 
         return await context.RunWithCache(definition, action);
     }

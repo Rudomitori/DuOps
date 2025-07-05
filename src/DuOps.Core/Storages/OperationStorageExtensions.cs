@@ -18,7 +18,9 @@ public static class OperationStorageExtensions
             operationId,
             cancellationToken
         );
-        return serializedOperation is not null ? operationDefinition.Deserialize(serializedOperation) : null;
+        return serializedOperation is not null
+            ? operationDefinition.Deserialize(serializedOperation)
+            : null;
     }
 
     public static async Task<Operation<TArgs, TResult>> GetOrAdd<TArgs, TResult>(
@@ -29,10 +31,7 @@ public static class OperationStorageExtensions
     )
     {
         var serializedOperation = operationDefinition.Serialize(operation);
-        serializedOperation = await storage.GetOrAdd(
-            serializedOperation,
-            cancellationToken
-        );
+        serializedOperation = await storage.GetOrAdd(serializedOperation, cancellationToken);
         return operationDefinition.Deserialize(serializedOperation);
     }
 }

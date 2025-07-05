@@ -18,7 +18,10 @@ public static class OperationDefinitionExtensions
             id,
             PollingScheduleId: null,
             createdAt,
-            SerializedMetaData: new Dictionary<(InterResultDiscriminator Discriminator, string? Key), string>(),
+            SerializedMetaData: new Dictionary<
+                (InterResultDiscriminator Discriminator, string? Key),
+                string
+            >(),
             args,
             OperationExecutionResult<TResult>.Yielded.Instance
         );
@@ -47,9 +50,13 @@ public static class OperationDefinitionExtensions
     {
         return executionResult switch
         {
-            OperationExecutionResult<TResult>.Yielded => OperationExecutionResult<string>.Yielded.Instance,
+            OperationExecutionResult<TResult>.Yielded => OperationExecutionResult<string>
+                .Yielded
+                .Instance,
             OperationExecutionResult<TResult>.Finished { Result: var result } =>
-                new OperationExecutionResult<string>.Finished(operationDefinition.SerializeResult(result)),
+                new OperationExecutionResult<string>.Finished(
+                    operationDefinition.SerializeResult(result)
+                ),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(executionResult),
                 executionResult,
@@ -81,9 +88,13 @@ public static class OperationDefinitionExtensions
     {
         return executionResult switch
         {
-            OperationExecutionResult<string>.Yielded => OperationExecutionResult<TResult>.Yielded.Instance,
+            OperationExecutionResult<string>.Yielded => OperationExecutionResult<TResult>
+                .Yielded
+                .Instance,
             OperationExecutionResult<string>.Finished { Result: var result } =>
-                new OperationExecutionResult<TResult>.Finished(operationDefinition.DeserializeResult(result)),
+                new OperationExecutionResult<TResult>.Finished(
+                    operationDefinition.DeserializeResult(result)
+                ),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(executionResult),
                 executionResult,

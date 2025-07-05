@@ -4,10 +4,7 @@ namespace DuOps.Core;
 
 internal static class OperationHelper
 {
-    internal static string SerializeInterResultKey<TKey>(
-        Func<TKey, string> serialize,
-        TKey key
-    )
+    internal static string SerializeInterResultKey<TKey>(Func<TKey, string> serialize, TKey key)
     {
         try
         {
@@ -15,10 +12,7 @@ internal static class OperationHelper
         }
         catch (Exception e)
         {
-            throw new SerializationException(
-                "Failed to serialize key of inter result",
-                e
-            );
+            throw new SerializationException("Failed to serialize key of inter result", e);
         }
     }
 
@@ -33,10 +27,7 @@ internal static class OperationHelper
         }
         catch (Exception e)
         {
-            throw new SerializationException(
-                "Failed to deserialize key of inter result",
-                e
-            );
+            throw new SerializationException("Failed to deserialize key of inter result", e);
         }
     }
 
@@ -51,10 +42,7 @@ internal static class OperationHelper
         }
         catch (Exception e)
         {
-            throw new SerializationException(
-                $"Failed to serialize value of inter result",
-                e
-            );
+            throw new SerializationException($"Failed to serialize value of inter result", e);
         }
     }
 
@@ -69,17 +57,11 @@ internal static class OperationHelper
         }
         catch (Exception e)
         {
-            throw new SerializationException(
-                $"Failed to deserialize value of inter result",
-                e
-            );
+            throw new SerializationException($"Failed to deserialize value of inter result", e);
         }
     }
 
-    internal static string SerializeArgs<TArgs>(
-        TArgs args,
-        Func<TArgs, string> serialize
-    )
+    internal static string SerializeArgs<TArgs>(TArgs args, Func<TArgs, string> serialize)
     {
         try
         {
@@ -87,10 +69,7 @@ internal static class OperationHelper
         }
         catch (Exception e)
         {
-            throw new SerializationException(
-                "Failed to serialize args of operation",
-                e
-            );
+            throw new SerializationException("Failed to serialize args of operation", e);
         }
     }
 
@@ -105,17 +84,11 @@ internal static class OperationHelper
         }
         catch (Exception e)
         {
-            throw new SerializationException(
-                "Failed to deserialize args of operation",
-                e
-            );
+            throw new SerializationException("Failed to deserialize args of operation", e);
         }
     }
 
-    internal static string SerializeResult<TResult>(
-        TResult value,
-        Func<TResult, string> serialize
-    )
+    internal static string SerializeResult<TResult>(TResult value, Func<TResult, string> serialize)
     {
         try
         {
@@ -123,10 +96,7 @@ internal static class OperationHelper
         }
         catch (Exception e)
         {
-            throw new SerializationException(
-                "Failed to serialize value of operation result",
-                e
-            );
+            throw new SerializationException("Failed to serialize value of operation result", e);
         }
     }
 
@@ -141,10 +111,7 @@ internal static class OperationHelper
         }
         catch (Exception e)
         {
-            throw new SerializationException(
-                "Failed to deserialize value of operation result",
-                e
-            );
+            throw new SerializationException("Failed to deserialize value of operation result", e);
         }
     }
 }

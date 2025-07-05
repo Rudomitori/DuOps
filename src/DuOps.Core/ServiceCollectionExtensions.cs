@@ -10,23 +10,17 @@ namespace DuOps.Core;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddOperationManager(
-        this IServiceCollection services
-    )
+    public static IServiceCollection AddOperationManager(this IServiceCollection services)
     {
         return services.AddScoped<IOperationManager, OperationManager>();
     }
 
-    public static IServiceCollection AddOperationPoller(
-        this IServiceCollection services
-    )
+    public static IServiceCollection AddOperationPoller(this IServiceCollection services)
     {
         return services.AddScoped<IOperationPoller, OperationPoller>();
     }
 
-    public static IServiceCollection AddOperationTelemetry(
-        this IServiceCollection services
-    )
+    public static IServiceCollection AddOperationTelemetry(this IServiceCollection services)
     {
         return services.AddScoped<IOperationTelemetry, OperationTelemetry>();
     }
@@ -46,7 +40,10 @@ public static class ServiceCollectionExtensions
     {
         services.TryAddScoped(factory);
         services.TryAddScoped<IOperationImplementation<TArgs, TResult>, TImplementation>();
-        services.AddScoped<IOperationDefinitionRegistryItem, OperationDefinitionRegistryItem<TArgs, TResult>>();
+        services.AddScoped<
+            IOperationDefinitionRegistryItem,
+            OperationDefinitionRegistryItem<TArgs, TResult>
+        >();
 
         return services;
     }

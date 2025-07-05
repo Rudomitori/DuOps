@@ -10,5 +10,8 @@ public sealed record SerializedOperation(
     DateTime StartedAt,
     string Args,
     OperationExecutionResult<string> ExecutionResult,
-    IReadOnlyDictionary<(InterResultDiscriminator Discriminator, string? Key), string> SerializedMetaData
+    IReadOnlyDictionary<
+        (InterResultDiscriminator Discriminator, string? Key),
+        string
+    > SerializedMetaData
 );

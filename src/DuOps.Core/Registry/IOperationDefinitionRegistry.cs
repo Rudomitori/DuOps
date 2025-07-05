@@ -7,12 +7,11 @@ public interface IOperationDefinitionRegistry
     Task InvokeCallbackWithDefinition<TCallback>(
         OperationDiscriminator discriminator,
         TCallback callback
-    ) where TCallback: IOperationDefinitionGenericCallback;
+    )
+        where TCallback : IOperationDefinitionGenericCallback;
 }
 
 public interface IOperationDefinitionGenericCallback
 {
-    Task Invoke<TArgs, TResult>(
-        IOperationDefinition<TArgs, TResult> operationDefinition
-    );
+    Task Invoke<TArgs, TResult>(IOperationDefinition<TArgs, TResult> operationDefinition);
 }

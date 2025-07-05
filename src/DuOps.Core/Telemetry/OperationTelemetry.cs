@@ -5,9 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace DuOps.Core.Telemetry;
 
-internal sealed class OperationTelemetry(
-    ILogger<OperationTelemetry> logger
-) : IOperationTelemetry
+internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : IOperationTelemetry
 {
     public void OnOperationStartedInBackground(
         IOperationDefinition operationDefinition,
@@ -114,6 +112,10 @@ internal sealed class OperationTelemetry(
         string serializedResult
     )
     {
-        logger.LogOperationFinished(operationDefinition.Discriminator, operationId, serializedResult);
+        logger.LogOperationFinished(
+            operationDefinition.Discriminator,
+            operationId,
+            serializedResult
+        );
     }
 }
