@@ -2,7 +2,8 @@
 using DuOps.Core.Operations;
 using DuOps.Core.Operations.InterResults;
 using DuOps.Core.Operations.InterResults.Definitions;
-using DuOps.Core.Repositories;
+using DuOps.Core.Registry;
+using DuOps.Core.Storages;
 using DuOps.Core.Telemetry;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,11 +11,78 @@ namespace DuOps.Core.OperationPollers;
 
 internal sealed class OperationPoller(
     IOperationStorage storage,
+    IOperationDefinitionRegistry registry,
     IServiceProvider serviceProvider,
     IOperationTelemetry telemetry
 ) : IOperationPoller
 {
-    public async Task<OperationExecutionResult<TResult>> PollOperation<TArgs, TResult>(
+    public async Task<SerializedOperationState> PollOperation(
+        OperationDiscriminator operationDiscriminator,
+        OperationId operationId,
+        CancellationToken yieldToken = default
+    )
+    {
+        var serializedOperation = await storage.GetByIdOrDefault(
+            operationDiscriminator,
+            operationId,
+            yieldToken
+        );
+
+        if (serializedOperation is null)
+            throw new InvalidOperationException($"Operation {operationId} was not found");
+
+        if (serializedOperation.State is SerializedOperationState.Finished finished)
+        {
+            return finished;
+        }
+
+        return await registry.InvokeCallbackWithDefinition<
+            TypedPollOperationCallbackProxy,
+            SerializedOperationState
+        >(
+            operationDiscriminator,
+            new TypedPollOperationCallbackProxy(this, serializedOperation, yieldToken)
+        );
+    }
+
+    private readonly struct TypedPollOperationCallbackProxy(
+        OperationPoller poller,
+        SerializedOperation operation,
+        CancellationToken yieldToken
+    ) : IOperationDefinitionGenericCallback<SerializedOperationState>
+    {
+        public async Task<SerializedOperationState> Invoke<TOperationArgs, TOperationResult>(
+            IOperationDefinition<TOperationArgs, TOperationResult> operationDefinition
+        )
+        {
+            var operationState = await poller.PollOperation(
+                operationDefinition,
+                operation,
+                yieldToken
+            );
+            return operationDefinition.Serialize(operationState);
+        }
+    }
+
+    public async Task<OperationState<TResult>> PollOperation<TArgs, TResult>(
+        IOperationDefinition<TArgs, TResult> operationDefinition,
+        OperationId operationId,
+        CancellationToken yieldToken = default
+    )
+    {
+        var serializedOperation = await storage.GetByIdOrDefault(
+            operationDefinition.Discriminator,
+            operationId,
+            yieldToken
+        );
+
+        if (serializedOperation is null)
+            throw new InvalidOperationException($"Operation {operationId} was not found");
+
+        return await PollOperation(operationDefinition, serializedOperation, yieldToken);
+    }
+
+    public async Task<OperationState<TResult>> PollOperation<TArgs, TResult>(
         IOperationDefinition<TArgs, TResult> operationDefinition,
         SerializedOperation serializedOperation,
         CancellationToken yieldToken
@@ -22,17 +90,9 @@ internal sealed class OperationPoller(
     {
         var operationId = serializedOperation.Id;
 
-        if (
-            serializedOperation.ExecutionResult
-            is OperationExecutionResult<string>.Finished finished
-        )
+        if (serializedOperation.State is SerializedOperationState.Finished finished)
         {
-            return new OperationExecutionResult<TResult>.Finished(
-                OperationHelper.DeserializeResult(
-                    finished.Result,
-                    operationDefinition.DeserializeResult
-                )
-            );
+            return operationDefinition.Deserialize(finished);
         }
 
         var serializedInterResults = await storage.GetInterResults(
@@ -48,32 +108,24 @@ internal sealed class OperationPoller(
         var context = new OperationExecutionContext(
             operationDefinition,
             operationId,
-            serializedInterResults.ToDictionary(x => (x.Discriminator, x.Key), x => x.Value),
+            serializedInterResults.ToDictionary(x => x.Key, x => x.Value),
             storage,
             telemetry,
             yieldToken
         );
 
-        string? serializedResult;
-        TResult result;
+        SerializedOperationResult serializedResult;
+        OperationResult<TResult> result;
         try
         {
-            var args = OperationHelper.DeserializeArgs(
-                serializedOperation.Args,
-                operationDefinition.DeserializeArgs
-            );
+            var args = operationDefinition.Deserialize(serializedOperation.Args);
 
-            result = await operationImplementation.Execute(args, context);
+            var resultValue = await operationImplementation.Execute(args.Value, context);
 
-            serializedResult = OperationHelper.SerializeResult(
-                result,
-                operationDefinition.SerializeResult
-            );
+            result = new OperationResult<TResult>(resultValue);
 
-            result = OperationHelper.DeserializeResult(
-                serializedResult,
-                operationDefinition.DeserializeResult
-            );
+            serializedResult = operationDefinition.Serialize(result);
+            result = operationDefinition.Deserialize(serializedResult);
         }
         catch (Exception e)
         {
@@ -90,192 +142,129 @@ internal sealed class OperationPoller(
             CancellationToken.None
         );
 
-        return new OperationExecutionResult<TResult>.Finished(result);
+        return new OperationState<TResult>.Finished(result);
     }
 
     private sealed class OperationExecutionContext(
         IOperationDefinition operationDefinition,
         OperationId operationId,
         Dictionary<
-            (InterResultDiscriminator Discriminator, string? Key),
-            string
+            (InterResultDiscriminator Discriminator, SerializedInterResultKey? Key),
+            SerializedInterResult
         > serializedInterResults,
         IOperationStorage storage,
         IOperationTelemetry telemetry,
         CancellationToken yieldToken
     ) : IOperationExecutionContext
     {
+        #region AddInterResult
+
         public async Task AddInterResult<TResult>(
             IInterResultDefinition<TResult> resultDefinition,
             TResult value
         )
         {
-            var serializedResultValue = OperationHelper.SerializeInterResultValue(
-                resultDefinition.Serialize,
-                value
-            );
+            var serializedResult = resultDefinition.Serialize(new InterResult<TResult>(value));
 
             await storage.AddInterResult(
                 operationDefinition.Discriminator,
                 operationId,
-                new SerializedInterResult(
-                    resultDefinition.Discriminator,
-                    null,
-                    serializedResultValue
-                ),
+                resultDefinition.Discriminator,
+                key: null,
+                serializedResult,
                 CancellationToken.None
             );
 
-            serializedInterResults[(resultDefinition.Discriminator, null)] = serializedResultValue;
+            serializedInterResults[(resultDefinition.Discriminator, null)] = serializedResult;
         }
 
-        public InterResult<TResult>? GetInterResultOrDefault<TResult>(
-            IInterResultDefinition<TResult> resultDefinition
+        #endregion
+
+        #region GetInterResult
+
+        public InterResult<TResult>? GetInterResultOrNull<TResult>(
+            IInterResultDefinition<TResult> definition
         )
         {
-            if (
-                serializedInterResults.TryGetValue(
-                    (resultDefinition.Discriminator, null),
-                    out var serializedValue
-                )
-            )
-            {
-                var value = OperationHelper.DeserializeInterResultValue(
-                    resultDefinition.Deserialize,
-                    serializedValue
-                );
+            var serializedInterResult = serializedInterResults.GetValueOrDefault(
+                (definition.Discriminator, null)
+            );
 
-                return new InterResult<TResult>(value);
+            if (serializedInterResult == default)
+            {
+                return null;
             }
 
-            return null;
+            return definition.Deserialize(serializedInterResult);
         }
 
-        public KeyedInterResult<TResult, TKey>? GetInterResultOrDefault<TResult, TKey>(
-            IKeyedInterResultDefinition<TResult, TKey> resultDefinition,
+        public InterResult<TResult>? GetInterResultOrNull<TResult, TKey>(
+            IKeyedInterResultDefinition<TResult, TKey> definition,
             TKey key
         )
         {
-            var serializedKey = resultDefinition.SerializeKey(key);
+            var serializedKey = definition.Serialize(new InterResultKey<TKey>(key));
 
-            if (
-                serializedInterResults.TryGetValue(
-                    (resultDefinition.Discriminator, serializedKey),
-                    out var serializedValue
-                )
-            )
+            var serializedInterResult = serializedInterResults.GetValueOrDefault(
+                (definition.Discriminator, serializedKey)
+            );
+
+            if (serializedInterResult == default)
             {
-                var value = OperationHelper.DeserializeInterResultValue(
-                    resultDefinition.Deserialize,
-                    serializedValue
-                );
-
-                return new KeyedInterResult<TResult, TKey>(key, value);
+                return null;
             }
 
-            return null;
+            return definition.Deserialize(serializedInterResult);
         }
 
-        public IReadOnlyCollection<KeyedInterResult<TResult, TKey>> GetInterResultsOrDefault<
-            TResult,
-            TKey
-        >(IKeyedInterResultDefinition<TResult, TKey> resultDefinition)
+        public IReadOnlyCollection<
+            KeyValuePair<InterResultKey<TKey>, InterResult<TResult>>
+        > GetInterResults<TResult, TKey>(IKeyedInterResultDefinition<TResult, TKey> definition)
         {
             return serializedInterResults
-                .Where(x => x.Key.Discriminator == resultDefinition.Discriminator)
-                .Select(x => new KeyedInterResult<TResult, TKey>(
-                    OperationHelper.DeserializeInterResultKey(
-                        resultDefinition.DeserializeKey,
-                        x.Key.Key
-                    ),
-                    OperationHelper.DeserializeInterResultValue(
-                        resultDefinition.Deserialize,
-                        x.Value
+                .Where(x => x.Key.Discriminator == definition.Discriminator)
+                .Where(x => x.Key.Key is not null)
+                .Select(x =>
+                    KeyValuePair.Create(
+                        definition.Deserialize(x.Key.Key!.Value),
+                        definition.Deserialize(x.Value)
                     )
-                ))
+                )
                 .ToArray();
         }
 
+        #endregion
+
+        #region RunWithCache
+
         public async Task<TResult> RunWithCache<TResult>(
-            IInterResultDefinition<TResult> resultDefinition,
+            IInterResultDefinition<TResult> definition,
             Func<Task<TResult>> action
         )
         {
-            return await RunWithCacheInternal(
-                resultDefinition,
-                serializedKey: null,
-                deserializeResult: resultDefinition.Deserialize,
-                serializeResult: resultDefinition.Serialize,
-                action
-            );
-        }
-
-        public async Task<TResult> RunWithCache<TResult, TKey>(
-            IKeyedInterResultDefinition<TResult, TKey> resultDefinition,
-            TKey key,
-            Func<Task<TResult>> action
-        )
-        {
-            var serializeInterResultKey = OperationHelper.SerializeInterResultKey(
-                resultDefinition.SerializeKey,
-                key
-            );
-
-            return await RunWithCacheInternal(
-                resultDefinition,
-                serializeInterResultKey,
-                deserializeResult: resultDefinition.Deserialize,
-                serializeResult: resultDefinition.Serialize,
-                action
-            );
-        }
-
-        public OperationId OperationId => operationId;
-
-        public CancellationToken YieldToken => yieldToken;
-
-        private async Task<TResult> RunWithCacheInternal<TResult>(
-            IInterResultDefinition resultDefinition,
-            string? serializedKey,
-            Func<string, TResult> deserializeResult,
-            Func<TResult, string> serializeResult,
-            Func<Task<TResult>> action
-        )
-        {
-            TResult interResultValue;
-            string serializedInterResultValue;
+            InterResult<TResult> interResult;
+            SerializedInterResult serializedInterResult;
             try
             {
-                var existedSerializedInterResultValue = serializedInterResults.GetValueOrDefault(
-                    (resultDefinition.Discriminator, serializedKey)
+                serializedInterResult = serializedInterResults.GetValueOrDefault(
+                    (definition.Discriminator, null)
                 );
 
-                if (existedSerializedInterResultValue is not null)
-                {
-                    return OperationHelper.DeserializeInterResultValue(
-                        deserializeResult,
-                        existedSerializedInterResultValue
-                    );
-                }
+                if (serializedInterResult != default)
+                    return definition.Deserialize(serializedInterResult).Value;
 
-                interResultValue = await action();
+                var interResultValue = await action();
+                interResult = new InterResult<TResult>(interResultValue);
 
-                serializedInterResultValue = OperationHelper.SerializeInterResultValue(
-                    serializeResult,
-                    interResultValue
-                );
-
-                interResultValue = OperationHelper.DeserializeInterResultValue(
-                    deserializeResult,
-                    serializedInterResultValue
-                );
+                serializedInterResult = definition.Serialize(interResult);
+                interResult = definition.Deserialize(serializedInterResult);
             }
             catch (Exception e)
             {
                 telemetry.OnInterResultThrewException(
                     operationDefinition,
                     operationId,
-                    resultDefinition,
+                    definition,
                     interResultKey: null,
                     e
                 );
@@ -285,26 +274,92 @@ internal sealed class OperationPoller(
             await storage.AddInterResult(
                 operationDefinition.Discriminator,
                 operationId,
-                new SerializedInterResult(
-                    resultDefinition.Discriminator,
-                    serializedKey,
-                    serializedInterResultValue
-                ),
+                definition.Discriminator,
+                key: null,
+                serializedInterResult,
                 CancellationToken.None
             );
 
-            serializedInterResults[(resultDefinition.Discriminator, serializedKey)] =
-                serializedInterResultValue;
+            serializedInterResults[(definition.Discriminator, null)] = serializedInterResult;
 
             telemetry.OnInterResultAdded(
                 operationDefinition,
                 operationId,
-                resultDefinition,
-                serializedKey,
-                serializedInterResultValue
+                definition,
+                null,
+                serializedInterResult
             );
 
-            return interResultValue;
+            return interResult.Value;
         }
+
+        public async Task<TResult> RunWithCache<TResult, TKey>(
+            IKeyedInterResultDefinition<TResult, TKey> definition,
+            TKey keyValue,
+            Func<Task<TResult>> action
+        )
+        {
+            var interResultKey = new InterResultKey<TKey>(keyValue);
+            SerializedInterResultKey serializedInterResultKey;
+
+            InterResult<TResult> interResult;
+            SerializedInterResult serializedInterResult;
+            try
+            {
+                serializedInterResultKey = definition.Serialize(interResultKey);
+
+                serializedInterResult = serializedInterResults.GetValueOrDefault(
+                    (definition.Discriminator, serializedInterResultKey)
+                );
+
+                if (serializedInterResult != default)
+                    return definition.Deserialize(serializedInterResult).Value;
+
+                var interResultValue = await action();
+                interResult = new InterResult<TResult>(interResultValue);
+
+                serializedInterResult = definition.Serialize(interResult);
+                interResult = definition.Deserialize(serializedInterResult);
+            }
+            catch (Exception e)
+            {
+                telemetry.OnInterResultThrewException(
+                    operationDefinition,
+                    operationId,
+                    definition,
+                    interResultKey: null,
+                    e
+                );
+                throw;
+            }
+
+            await storage.AddInterResult(
+                operationDefinition.Discriminator,
+                operationId,
+                definition.Discriminator,
+                key: serializedInterResultKey,
+                serializedInterResult,
+                CancellationToken.None
+            );
+
+            serializedInterResults[(definition.Discriminator, serializedInterResultKey)] =
+                serializedInterResult;
+
+            telemetry.OnInterResultAdded(
+                operationDefinition,
+                operationId,
+                definition,
+                serializedInterResultKey,
+                serializedInterResult
+            );
+
+            return interResult.Value;
+        }
+
+        #endregion
+
+        public OperationId OperationId => operationId;
+
+        public CancellationToken YieldToken => yieldToken;
     }
 }

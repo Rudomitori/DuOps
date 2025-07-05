@@ -1,5 +1,6 @@
 ﻿using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
+using DuOps.Core.Operations.InterResults;
 using DuOps.Core.Operations.InterResults.Definitions;
 
 namespace DuOps.Core.Telemetry;
@@ -15,14 +16,14 @@ public interface IOperationTelemetry
         IOperationDefinition operationDefinition,
         OperationId operationId,
         IInterResultDefinition resultDefinition,
-        string? interResultKey,
-        string serializedResult
+        SerializedInterResultKey? interResultKey,
+        SerializedInterResult serializedResult
     );
 
     void OnOperationFinished(
         IOperationDefinition operationDefinition,
         OperationId operationId,
-        string serializedResult
+        SerializedOperationResult serializedResult
     );
 
     void OnOperationThrewException(
@@ -35,7 +36,7 @@ public interface IOperationTelemetry
         IOperationDefinition operationDefinition,
         OperationId operationId,
         IInterResultDefinition interResultDefinition,
-        string? interResultKey,
+        SerializedInterResultKey? interResultKey,
         Exception exception
     );
 

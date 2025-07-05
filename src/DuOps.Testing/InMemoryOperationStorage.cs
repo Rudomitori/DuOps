@@ -1,9 +1,10 @@
 ﻿using System.Collections.Concurrent;
+using DuOps.Core.Exceptions;
 using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
 using DuOps.Core.Operations.InterResults;
 using DuOps.Core.Operations.InterResults.Definitions;
-using DuOps.Core.Repositories;
+using DuOps.Core.Storages;
 
 namespace DuOps.Testing;
 
@@ -18,21 +19,24 @@ public sealed class InMemoryOperationStorage : IOperationStorage
 
     public readonly ConcurrentDictionary<
         OperationPk,
-        Dictionary<(InterResultDiscriminator Discriminator, string? Key), string>
+        Dictionary<
+            (InterResultDiscriminator Discriminator, SerializedInterResultKey? Key),
+            SerializedInterResult
+        >
     > StoredIntermediateResults = new();
 
-    public async Task<SerializedOperation?> GetByIdOrDefault(
+    public Task<SerializedOperation?> GetByIdOrDefault(
         OperationDiscriminator discriminator,
         OperationId operationId,
         CancellationToken cancellationToken = default
     )
     {
         var operationPk = new OperationPk(discriminator, operationId);
-
-        return StoredOperations.GetValueOrDefault(operationPk);
+        var serializedOperation = StoredOperations.GetValueOrDefault(operationPk);
+        return Task.FromResult(serializedOperation);
     }
 
-    public async Task<SerializedOperation> GetOrAdd(
+    public Task<SerializedOperation> GetOrAdd(
         SerializedOperation serializedOperation,
         CancellationToken cancellationToken = default
     )
@@ -42,60 +46,76 @@ public sealed class InMemoryOperationStorage : IOperationStorage
             serializedOperation.Id
         );
 
-        return StoredOperations.GetOrAdd(operationPk, serializedOperation);
+        serializedOperation = StoredOperations.GetOrAdd(operationPk, serializedOperation);
+        return Task.FromResult(serializedOperation);
     }
 
-    public async Task<IReadOnlyCollection<SerializedInterResult>> GetInterResults(
+    public Task<
+        IReadOnlyDictionary<
+            (InterResultDiscriminator Discriminator, SerializedInterResultKey? Key),
+            SerializedInterResult
+        >
+    > GetInterResults(
         OperationDiscriminator discriminator,
         OperationId operationId,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken
     )
     {
         var operationPk = new OperationPk(discriminator, operationId);
 
         var results = StoredIntermediateResults.GetValueOrDefault(operationPk);
-        return results
-                ?.Select(x => new SerializedInterResult(x.Key.Discriminator, x.Key.Key, x.Value))
-                .ToArray() ?? [];
+        var serializedInterResults = results?.ToDictionary(x => x.Key, x => x.Value) ?? [];
+
+        return Task.FromResult<
+            IReadOnlyDictionary<
+                (InterResultDiscriminator Discriminator, SerializedInterResultKey? Key),
+                SerializedInterResult
+            >
+        >(serializedInterResults);
     }
 
-    public async Task AddInterResult(
-        OperationDiscriminator discriminator,
+    public Task AddInterResult(
+        OperationDiscriminator operationDiscriminator,
         OperationId operationId,
-        SerializedInterResult interResult,
+        InterResultDiscriminator interResultDiscriminator,
+        SerializedInterResultKey? key,
+        SerializedInterResult result,
         CancellationToken cancellationToken
     )
     {
-        var operationDiscriminator = discriminator;
         var operationPk = new OperationPk(operationDiscriminator, operationId);
 
-        var resultDiscriminator = interResult.Discriminator;
-        var resultKey = interResult.Key;
+        var resultKey = key;
 
         StoredIntermediateResults.AddOrUpdate(
             operationPk,
-            _ => new Dictionary<(InterResultDiscriminator Discriminator, string? Key), string>
+            _ => new Dictionary<
+                (InterResultDiscriminator Discriminator, SerializedInterResultKey? Key),
+                SerializedInterResult
+            >
             {
-                [(resultDiscriminator, resultKey)] = interResult.Value,
+                [(interResultDiscriminator, resultKey)] = result,
             },
             (_, results) =>
             {
-                if (!results.TryAdd((resultDiscriminator, resultKey), interResult.Value))
+                if (!results.TryAdd((interResultDiscriminator, resultKey), result))
                 {
-                    throw new InvalidOperationException(
-                        $"Operation({operationId}.IntermediateResults[{resultDiscriminator}, {resultKey}] already exists"
+                    throw new InterResultConflictException(
+                        $"Operation({operationId}.IntermediateResults[{interResultDiscriminator}, {resultKey}] already exists"
                     );
                 }
 
                 return results;
             }
         );
+
+        return Task.CompletedTask;
     }
 
-    public async Task AddResult(
+    public Task AddResult(
         OperationDiscriminator discriminator,
         OperationId operationId,
-        string serializedOperationResult,
+        SerializedOperationResult serializedOperationResult,
         CancellationToken cancellationToken = default
     )
     {
@@ -109,7 +129,7 @@ public sealed class InMemoryOperationStorage : IOperationStorage
                 ),
             (_, operation) =>
             {
-                if (operation.ExecutionResult is OperationExecutionResult<string>.Finished)
+                if (operation.State is SerializedOperationState.Finished)
                 {
                     throw new InvalidOperationException(
                         $"Operation {discriminator.Value} {operationId.Value} already has result"
@@ -118,15 +138,15 @@ public sealed class InMemoryOperationStorage : IOperationStorage
 
                 return operation with
                 {
-                    ExecutionResult = new OperationExecutionResult<string>.Finished(
-                        serializedOperationResult
-                    ),
+                    State = new SerializedOperationState.Finished(serializedOperationResult),
                 };
             }
         );
+
+        return Task.CompletedTask;
     }
 
-    public async Task<OperationPollingScheduleId> GetOrSetPollingScheduleId(
+    public Task<OperationPollingScheduleId> GetOrSetPollingScheduleId(
         OperationDiscriminator discriminator,
         OperationId operationId,
         OperationPollingScheduleId scheduleId,
@@ -155,7 +175,7 @@ public sealed class InMemoryOperationStorage : IOperationStorage
             }
         );
 
-        return serializedOperation.PollingScheduleId!.Value;
+        return Task.FromResult(serializedOperation.PollingScheduleId!.Value);
     }
 
     public Task Delete(

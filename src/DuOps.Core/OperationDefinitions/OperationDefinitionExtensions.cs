@@ -1,6 +1,5 @@
 ﻿using DuOps.Core.Exceptions;
 using DuOps.Core.Operations;
-using DuOps.Core.Operations.InterResults.Definitions;
 
 namespace DuOps.Core.OperationDefinitions;
 
@@ -18,14 +17,137 @@ public static class OperationDefinitionExtensions
             id,
             PollingScheduleId: null,
             createdAt,
-            SerializedMetaData: new Dictionary<
-                (InterResultDiscriminator Discriminator, string? Key),
-                string
-            >(),
-            args,
-            OperationExecutionResult<TResult>.Yielded.Instance
+            new OperationArgs<TArgs>(args),
+            OperationState<TResult>.Yielded.Instance
         );
     }
+
+    #region OperationArgs
+
+    public static SerializedOperationArgs Serialize<TArgs, TResult>(
+        this IOperationDefinition<TArgs, TResult> operationDefinition,
+        OperationArgs<TArgs> args
+    )
+    {
+        try
+        {
+            var serializedArgsValue = operationDefinition.SerializeArgs(args.Value);
+            return new SerializedOperationArgs(serializedArgsValue);
+        }
+        catch (Exception e)
+        {
+            throw new SerializationException(
+                $"Failed to serialize args of operation {operationDefinition.Discriminator}",
+                e
+            );
+        }
+    }
+
+    public static OperationArgs<TArgs> Deserialize<TArgs, TResult>(
+        this IOperationDefinition<TArgs, TResult> operationDefinition,
+        SerializedOperationArgs serializedArgs
+    )
+    {
+        try
+        {
+            var argsValue = operationDefinition.DeserializeArgs(serializedArgs.Value);
+
+            return new OperationArgs<TArgs>(argsValue);
+        }
+        catch (Exception e)
+        {
+            throw new SerializationException(
+                $"Failed to deserialize args of operation {operationDefinition.Discriminator}",
+                e
+            );
+        }
+    }
+
+    #endregion
+
+    #region OperationResult
+
+    public static SerializedOperationResult Serialize<TArgs, TResult>(
+        this IOperationDefinition<TArgs, TResult> operationDefinition,
+        OperationResult<TResult> operationResult
+    )
+    {
+        try
+        {
+            var serializedResultValue = operationDefinition.SerializeResult(operationResult.Value);
+            return new SerializedOperationResult(serializedResultValue);
+        }
+        catch (Exception e)
+        {
+            throw new SerializationException(
+                $"Failed to serialize result of operation {operationDefinition.Discriminator}",
+                e
+            );
+        }
+    }
+
+    public static OperationResult<TResult> Deserialize<TArgs, TResult>(
+        this IOperationDefinition<TArgs, TResult> operationDefinition,
+        SerializedOperationResult serializedResult
+    )
+    {
+        try
+        {
+            var resultValue = operationDefinition.DeserializeResult(serializedResult.Value);
+            return new OperationResult<TResult>(resultValue);
+        }
+        catch (Exception e)
+        {
+            throw new SerializationException(
+                $"Failed to deserialize result of operation {operationDefinition.Discriminator}",
+                e
+            );
+        }
+    }
+
+    #endregion
+
+    #region OperationState
+
+    public static SerializedOperationState Serialize<TArgs, TResult>(
+        this IOperationDefinition<TArgs, TResult> operationDefinition,
+        OperationState<TResult> state
+    )
+    {
+        return state switch
+        {
+            OperationState<TResult>.Yielded => SerializedOperationState.Yielded.Instance,
+            OperationState<TResult>.Finished { Result: var result } =>
+                new SerializedOperationState.Finished(operationDefinition.Serialize(result)),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(state),
+                state,
+                "Unknow operation execution result type"
+            ),
+        };
+    }
+
+    public static OperationState<TResult> Deserialize<TArgs, TResult>(
+        this IOperationDefinition<TArgs, TResult> operationDefinition,
+        SerializedOperationState state
+    )
+    {
+        return state switch
+        {
+            SerializedOperationState.Yielded => OperationState<TResult>.Yielded.Instance,
+            SerializedOperationState.Finished { Result: var result } =>
+                new OperationState<TResult>.Finished(operationDefinition.Deserialize(result)),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(state),
+                state,
+                "Unknow operation execution result type"
+            ),
+        };
+    }
+
+    #endregion
+
+    #region Operation
 
     public static SerializedOperation Serialize<TArgs, TResult>(
         this IOperationDefinition<TArgs, TResult> operationDefinition,
@@ -37,32 +159,9 @@ public static class OperationDefinitionExtensions
             operation.Id,
             operation.PollingScheduleId,
             operation.CreatedAt,
-            operationDefinition.SerializeArgs(operation.Arguments),
-            operationDefinition.Serialize(operation.ExecutionResult),
-            operation.SerializedMetaData
+            operationDefinition.Serialize(operation.Args),
+            operationDefinition.Serialize(operation.State)
         );
-    }
-
-    public static OperationExecutionResult<string> Serialize<TArgs, TResult>(
-        this IOperationDefinition<TArgs, TResult> operationDefinition,
-        OperationExecutionResult<TResult> executionResult
-    )
-    {
-        return executionResult switch
-        {
-            OperationExecutionResult<TResult>.Yielded => OperationExecutionResult<string>
-                .Yielded
-                .Instance,
-            OperationExecutionResult<TResult>.Finished { Result: var result } =>
-                new OperationExecutionResult<string>.Finished(
-                    operationDefinition.SerializeResult(result)
-                ),
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(executionResult),
-                executionResult,
-                "Unknow operation execution result type"
-            ),
-        };
     }
 
     public static Operation<TArgs, TResult> Deserialize<TArgs, TResult>(
@@ -75,68 +174,10 @@ public static class OperationDefinitionExtensions
             serializedOperation.Id,
             serializedOperation.PollingScheduleId,
             serializedOperation.StartedAt,
-            serializedOperation.SerializedMetaData,
-            operationDefinition.DeserializeArgs(serializedOperation.Args),
-            operationDefinition.Deserialize(serializedOperation.ExecutionResult)
+            operationDefinition.Deserialize(serializedOperation.Args),
+            operationDefinition.Deserialize(serializedOperation.State)
         );
     }
 
-    public static OperationExecutionResult<TResult> Deserialize<TArgs, TResult>(
-        this IOperationDefinition<TArgs, TResult> operationDefinition,
-        OperationExecutionResult<string> executionResult
-    )
-    {
-        return executionResult switch
-        {
-            OperationExecutionResult<string>.Yielded => OperationExecutionResult<TResult>
-                .Yielded
-                .Instance,
-            OperationExecutionResult<string>.Finished { Result: var result } =>
-                new OperationExecutionResult<TResult>.Finished(
-                    operationDefinition.DeserializeResult(result)
-                ),
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(executionResult),
-                executionResult,
-                "Unknow operation execution result type"
-            ),
-        };
-    }
-
-    public static SerializedOperationArgs Serialize<TArgs, TResult>(
-        this IOperationDefinition<TArgs, TResult> operationDefinition,
-        TArgs args
-    )
-    {
-        try
-        {
-            var serializedArgsValue = operationDefinition.SerializeArgs(args);
-            return new SerializedOperationArgs(serializedArgsValue);
-        }
-        catch (Exception e)
-        {
-            throw new SerializationException(
-                $"Failed to serialize args of operation {operationDefinition.Discriminator}",
-                e
-            );
-        }
-    }
-
-    public static TArgs Deserialize<TArgs, TResult>(
-        this IOperationDefinition<TArgs, TResult> operationDefinition,
-        SerializedOperationArgs serializedArgs
-    )
-    {
-        try
-        {
-            return operationDefinition.DeserializeArgs(serializedArgs.Value);
-        }
-        catch (Exception e)
-        {
-            throw new SerializationException(
-                $"Failed to deserialize args of operation {operationDefinition.Discriminator}",
-                e
-            );
-        }
-    }
+    #endregion
 }

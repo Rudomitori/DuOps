@@ -5,7 +5,19 @@ namespace DuOps.Core.OperationPollers;
 
 public interface IOperationPoller
 {
-    Task<OperationExecutionResult<TResult>> PollOperation<TArgs, TResult>(
+    Task<SerializedOperationState> PollOperation(
+        OperationDiscriminator operationDiscriminator,
+        OperationId operationId,
+        CancellationToken yieldToken = default
+    );
+
+    Task<OperationState<TResult>> PollOperation<TArgs, TResult>(
+        IOperationDefinition<TArgs, TResult> operationDefinition,
+        OperationId operationId,
+        CancellationToken yieldToken = default
+    );
+
+    Task<OperationState<TResult>> PollOperation<TArgs, TResult>(
         IOperationDefinition<TArgs, TResult> operationDefinition,
         SerializedOperation serializedOperation,
         CancellationToken yieldToken = default

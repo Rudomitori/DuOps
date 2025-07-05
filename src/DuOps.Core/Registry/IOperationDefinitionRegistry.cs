@@ -4,14 +4,16 @@ namespace DuOps.Core.Registry;
 
 public interface IOperationDefinitionRegistry
 {
-    Task InvokeCallbackWithDefinition<TCallback>(
+    Task<TCallbackResult> InvokeCallbackWithDefinition<TCallback, TCallbackResult>(
         OperationDiscriminator discriminator,
         TCallback callback
     )
-        where TCallback : IOperationDefinitionGenericCallback;
+        where TCallback : IOperationDefinitionGenericCallback<TCallbackResult>;
 }
 
-public interface IOperationDefinitionGenericCallback
+public interface IOperationDefinitionGenericCallback<TCallbackResult>
 {
-    Task Invoke<TArgs, TResult>(IOperationDefinition<TArgs, TResult> operationDefinition);
+    Task<TCallbackResult> Invoke<TOperationArgs, TOperationResult>(
+        IOperationDefinition<TOperationArgs, TOperationResult> operationDefinition
+    );
 }

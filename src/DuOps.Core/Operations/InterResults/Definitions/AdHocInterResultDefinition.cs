@@ -18,7 +18,7 @@ public sealed class AdHocInterResultDefinition<TResult> : IInterResultDefinition
         _serialize = serialize;
     }
 
-    public string Serialize(TResult result) => _serialize(result);
+    public string SerializeResult(TResult result) => _serialize(result);
 
-    public TResult Deserialize(string serializedResult) => _deserialize(serializedResult);
+    public TResult DeserializeResult(string serializedResult) => _deserialize(serializedResult);
 }

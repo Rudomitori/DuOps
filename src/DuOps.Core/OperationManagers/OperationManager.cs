@@ -1,7 +1,7 @@
 ﻿using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
 using DuOps.Core.PollingSchedule;
-using DuOps.Core.Repositories;
+using DuOps.Core.Storages;
 using DuOps.Core.Telemetry;
 
 namespace DuOps.Core.OperationManagers;

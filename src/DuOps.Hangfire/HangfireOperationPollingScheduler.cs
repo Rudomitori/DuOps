@@ -1,11 +1,11 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using DuOps.Core.OperationDefinitions;
+﻿using DuOps.Core.OperationDefinitions;
 using DuOps.Core.OperationPollers;
 using DuOps.Core.Operations;
 using DuOps.Core.PollingSchedule;
 using DuOps.Core.Registry;
-using DuOps.Core.Repositories;
+using DuOps.Core.Storages;
 using Hangfire;
+using Hangfire.Server;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DuOps.Hangfire;
@@ -29,6 +29,7 @@ public sealed class HangfireOperationPollingScheduler(
                 operationDefinition.Discriminator.Value,
                 operationId.ShardKey,
                 operationId.Value,
+                null!,
                 CancellationToken.None
             )
         );
@@ -40,21 +41,28 @@ public sealed class HangfireOperationPollingScheduler(
         string operationDiscriminator,
         string? operationIdShardKey,
         string operationIdValue,
+        PerformContext performContext,
         CancellationToken cancellationToken
     )
     {
+        var backgroundJobId = performContext.BackgroundJob.Id;
+        var pollingScheduleId = new OperationPollingScheduleId(backgroundJobId);
         var discriminator = new OperationDiscriminator(operationDiscriminator);
         var operationId = new OperationId(operationIdShardKey, operationIdValue);
 
-        await operationDefinitionRegistry.InvokeCallbackWithDefinition(
+        await operationDefinitionRegistry.InvokeCallbackWithDefinition<
+            TypedHangfireCallbackProxy,
+            object?
+        >(
             discriminator,
-            new TypedHangfireCallbackProxy(this, operationId, cancellationToken)
+            new TypedHangfireCallbackProxy(this, operationId, pollingScheduleId, cancellationToken)
         );
     }
 
     private async Task TypedHangfireCallback<TArgs, TResult>(
         IOperationDefinition<TArgs, TResult> operationDefinition,
         OperationId operationId,
+        OperationPollingScheduleId pollingScheduleId,
         CancellationToken cancellationToken
     )
     {
@@ -62,13 +70,15 @@ public sealed class HangfireOperationPollingScheduler(
 
         var operation = await GetOperation(operationDefinition, operationId, cancellationToken);
 
+        // TODO: Check PollingScheduleId
+
         var result = await operationPoller.PollOperation(
             operationDefinition,
             operation,
             cancellationToken
         );
 
-        if (result is OperationExecutionResult<TResult>.Yielded)
+        if (result is OperationState<TResult>.Yielded)
         {
             throw new Exception(
                 $"Operation({operationDefinition.Discriminator.Value};{operationId.ShardKey};{operationId.Value}) yielded"
@@ -106,20 +116,25 @@ public sealed class HangfireOperationPollingScheduler(
         );
     }
 
-    [SuppressMessage("Major Code Smell", "S3898:Value types should implement \"IEquatable<T>\"")]
     private readonly struct TypedHangfireCallbackProxy(
         HangfireOperationPollingScheduler pollingScheduler,
         OperationId operationId,
+        OperationPollingScheduleId pollingScheduleId,
         CancellationToken cancellationToken
-    ) : IOperationDefinitionGenericCallback
+    ) : IOperationDefinitionGenericCallback<object?>
     {
-        public Task Invoke<TArgs, TResult>(IOperationDefinition<TArgs, TResult> operationDefinition)
+        public async Task<object?> Invoke<TArgs, TResult>(
+            IOperationDefinition<TArgs, TResult> operationDefinition
+        )
         {
-            return pollingScheduler.TypedHangfireCallback(
+            await pollingScheduler.TypedHangfireCallback(
                 operationDefinition,
                 operationId,
+                pollingScheduleId,
                 cancellationToken
             );
+
+            return null;
         }
     }
 }

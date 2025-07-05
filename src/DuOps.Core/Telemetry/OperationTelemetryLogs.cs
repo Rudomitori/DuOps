@@ -1,5 +1,6 @@
 ﻿using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
+using DuOps.Core.Operations.InterResults;
 using DuOps.Core.Operations.InterResults.Definitions;
 using Microsoft.Extensions.Logging;
 
@@ -16,7 +17,7 @@ internal static partial class OperationTelemetryLogs
         OperationDiscriminator operationDiscriminator,
         OperationId operationId,
         OperationPollingScheduleId? scheduleId,
-        string operationArgs
+        SerializedOperationArgs operationArgs
     );
 
     [LoggerMessage(
@@ -28,7 +29,7 @@ internal static partial class OperationTelemetryLogs
         OperationDiscriminator operationDiscriminator,
         OperationId operationId,
         InterResultDiscriminator interResultDiscriminator,
-        string serializedResult
+        SerializedInterResult serializedResult
     );
 
     [LoggerMessage(
@@ -40,8 +41,8 @@ internal static partial class OperationTelemetryLogs
         OperationDiscriminator operationDiscriminator,
         OperationId operationId,
         InterResultDiscriminator interResultDiscriminator,
-        string interResultKey,
-        string serializedResult
+        SerializedInterResultKey interResultKey,
+        SerializedInterResult serializedResult
     );
 
     [LoggerMessage(
@@ -86,7 +87,7 @@ internal static partial class OperationTelemetryLogs
         OperationDiscriminator operationDiscriminator,
         OperationId operationId,
         InterResultDiscriminator interResultDiscriminator,
-        string interResultKey
+        SerializedInterResultKey interResultKey
     );
 
     [LoggerMessage(
@@ -97,6 +98,6 @@ internal static partial class OperationTelemetryLogs
         this ILogger<OperationTelemetry> logger,
         OperationDiscriminator operationDiscriminator,
         OperationId operationId,
-        string serializedResult
+        SerializedOperationResult serializedResult
     );
 }

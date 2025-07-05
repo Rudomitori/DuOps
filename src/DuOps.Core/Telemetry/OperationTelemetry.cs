@@ -1,5 +1,6 @@
 ﻿using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
+using DuOps.Core.Operations.InterResults;
 using DuOps.Core.Operations.InterResults.Definitions;
 using Microsoft.Extensions.Logging;
 
@@ -24,8 +25,8 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
         IOperationDefinition operationDefinition,
         OperationId operationId,
         IInterResultDefinition resultDefinition,
-        string? interResultKey,
-        string serializedResult
+        SerializedInterResultKey? interResultKey,
+        SerializedInterResult serializedResult
     )
     {
         if (interResultKey is null)
@@ -43,7 +44,7 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
                 operationDefinition.Discriminator,
                 operationId,
                 resultDefinition.Discriminator,
-                interResultKey,
+                interResultKey.Value,
                 serializedResult
             );
         }
@@ -66,7 +67,7 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
         IOperationDefinition operationDefinition,
         OperationId operationId,
         IInterResultDefinition interResultDefinition,
-        string? interResultKey,
+        SerializedInterResultKey? interResultKey,
         Exception exception
     )
     {
@@ -86,7 +87,7 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
                 operationDefinition.Discriminator,
                 operationId,
                 interResultDefinition.Discriminator,
-                interResultKey
+                interResultKey.Value
             );
         }
     }
@@ -109,7 +110,7 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
     public void OnOperationFinished(
         IOperationDefinition operationDefinition,
         OperationId operationId,
-        string serializedResult
+        SerializedOperationResult serializedResult
     )
     {
         logger.LogOperationFinished(

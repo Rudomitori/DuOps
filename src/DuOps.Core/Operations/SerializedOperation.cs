@@ -8,10 +8,6 @@ public sealed record SerializedOperation(
     OperationId Id,
     OperationPollingScheduleId? PollingScheduleId,
     DateTime StartedAt,
-    string Args,
-    OperationExecutionResult<string> ExecutionResult,
-    IReadOnlyDictionary<
-        (InterResultDiscriminator Discriminator, string? Key),
-        string
-    > SerializedMetaData
+    SerializedOperationArgs Args,
+    SerializedOperationState State
 );

@@ -25,11 +25,11 @@ public sealed class AdHocKeyedInterResultDefinition<TResult, TKey>
         _serialize = serialize;
     }
 
-    public string Serialize(TResult result) => _serialize(result);
+    public string SerializeResult(TResult result) => _serialize(result);
 
     public TKey DeserializeKey(string serializedKey) => _deserializeKey(serializedKey);
 
     public string SerializeKey(TKey key) => _serializeKey(key);
 
-    public TResult Deserialize(string serializedResult) => _deserialize(serializedResult);
+    public TResult DeserializeResult(string serializedResult) => _deserialize(serializedResult);
 }

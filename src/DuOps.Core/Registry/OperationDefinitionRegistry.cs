@@ -6,11 +6,11 @@ internal sealed class OperationDefinitionRegistry(
     IEnumerable<IOperationDefinitionRegistryItem> registryItems
 ) : IOperationDefinitionRegistry
 {
-    public Task InvokeCallbackWithDefinition<TCallback>(
+    public Task<TCallbackResult> InvokeCallbackWithDefinition<TCallback, TCallbackResult>(
         OperationDiscriminator discriminator,
         TCallback callback
     )
-        where TCallback : IOperationDefinitionGenericCallback
+        where TCallback : IOperationDefinitionGenericCallback<TCallbackResult>
     {
         var registryItem = registryItems.FirstOrDefault(x =>
             x.OperationDefinition.Discriminator == discriminator

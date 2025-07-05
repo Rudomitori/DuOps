@@ -8,27 +8,26 @@ public interface IOperationExecutionContext
 {
     Task AddInterResult<TResult>(IInterResultDefinition<TResult> resultDefinition, TResult value);
 
-    InterResult<TResult>? GetInterResultOrDefault<TResult>(
-        IInterResultDefinition<TResult> resultDefinition
-    );
+    InterResult<TResult>? GetInterResultOrNull<TResult>(IInterResultDefinition<TResult> definition);
 
-    KeyedInterResult<TResult, TKey>? GetInterResultOrDefault<TResult, TKey>(
-        IKeyedInterResultDefinition<TResult, TKey> resultDefinition,
+    InterResult<TResult>? GetInterResultOrNull<TResult, TKey>(
+        IKeyedInterResultDefinition<TResult, TKey> definition,
         TKey key
     );
 
-    IReadOnlyCollection<KeyedInterResult<TResult, TKey>> GetInterResultsOrDefault<TResult, TKey>(
-        IKeyedInterResultDefinition<TResult, TKey> resultDefinition
-    );
+    IReadOnlyCollection<KeyValuePair<InterResultKey<TKey>, InterResult<TResult>>> GetInterResults<
+        TResult,
+        TKey
+    >(IKeyedInterResultDefinition<TResult, TKey> resultDefinition);
 
     Task<TResult> RunWithCache<TResult>(
-        IInterResultDefinition<TResult> resultDefinition,
+        IInterResultDefinition<TResult> definition,
         Func<Task<TResult>> action
     );
 
     Task<TResult> RunWithCache<TResult, TKey>(
-        IKeyedInterResultDefinition<TResult, TKey> resultDefinition,
-        TKey key,
+        IKeyedInterResultDefinition<TResult, TKey> definition,
+        TKey keyValue,
         Func<Task<TResult>> action
     );
 

@@ -9,7 +9,9 @@ internal sealed record OperationDefinitionRegistryItem<TArgs, TResult>(
     IOperationDefinition IOperationDefinitionRegistryItem.OperationDefinition =>
         OperationDefinition;
 
-    public Task CallGenericCallback(IOperationDefinitionGenericCallback callback)
+    public Task<TCallbackResult> CallGenericCallback<TCallbackResult>(
+        IOperationDefinitionGenericCallback<TCallbackResult> callback
+    )
     {
         return callback.Invoke(OperationDefinition);
     }
@@ -19,5 +21,7 @@ internal interface IOperationDefinitionRegistryItem
 {
     IOperationDefinition OperationDefinition { get; }
 
-    Task CallGenericCallback(IOperationDefinitionGenericCallback callback);
+    Task<TCallbackResult> CallGenericCallback<TCallbackResult>(
+        IOperationDefinitionGenericCallback<TCallbackResult> callback
+    );
 }

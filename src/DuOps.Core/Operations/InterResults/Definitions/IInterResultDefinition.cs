@@ -2,17 +2,13 @@
 
 public interface IInterResultDefinition<TResult> : IInterResultDefinition
 {
-    string Serialize(TResult result);
+    string SerializeResult(TResult result);
 
-    TResult Deserialize(string serializedResult);
+    TResult DeserializeResult(string serializedResult);
 }
 
-public interface IKeyedInterResultDefinition<TResult, TKey> : IInterResultDefinition
+public interface IKeyedInterResultDefinition<TResult, TKey> : IInterResultDefinition<TResult>
 {
-    string Serialize(TResult result);
-
-    TResult Deserialize(string serializedResult);
-
     string SerializeKey(TKey key);
 
     TKey DeserializeKey(string serializedKey);

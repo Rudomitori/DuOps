@@ -1,3 +1,3 @@
 ﻿namespace DuOps.Core.Operations.InterResults;
 
-public sealed record InterResult<TValue>(TValue Value);
+public readonly record struct InterResult<T>(T Value);
