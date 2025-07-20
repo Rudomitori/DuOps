@@ -24,18 +24,16 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
     public void OnInterResultAdded(
         IOperationDefinition operationDefinition,
         OperationId operationId,
-        IInterResultDefinition resultDefinition,
-        SerializedInterResultKey? interResultKey,
-        SerializedInterResult serializedResult
+        SerializedInterResult interResult
     )
     {
-        if (interResultKey is null)
+        if (interResult.Key is null)
         {
             logger.LogInterResultAdded(
                 operationDefinition.Discriminator,
                 operationId,
-                resultDefinition.Discriminator,
-                serializedResult
+                interResult.Discriminator,
+                interResult.Value
             );
         }
         else
@@ -43,9 +41,9 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
             logger.LogInterResultAdded(
                 operationDefinition.Discriminator,
                 operationId,
-                resultDefinition.Discriminator,
-                interResultKey.Value,
-                serializedResult
+                interResult.Discriminator,
+                interResult.Key.Value,
+                interResult.Value
             );
         }
     }

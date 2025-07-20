@@ -1,19 +1,73 @@
+using System.Diagnostics;
 using DuOps.Core.Exceptions;
 
 namespace DuOps.Core.Operations.InterResults.Definitions;
 
 public static class InterResultDefinitionExtensions
 {
-    #region Key
+    #region NewInterResult
 
-    internal static SerializedInterResultKey Serialize<TValue, TKey>(
-        this IKeyedInterResultDefinition<TValue, TKey> definition,
-        InterResultKey<TKey> key
+    public static InterResult<TValue> NewInterResult<TValue>(
+        this IInterResultDefinition<TValue> definition,
+        TValue value
+    )
+    {
+        return new InterResult<TValue>(definition.Discriminator, value);
+    }
+
+    public static InterResult<TKey, TValue> NewInterResult<TKey, TValue>(
+        this IInterResultDefinition<TKey, TValue> definition,
+        TKey key,
+        TValue value
+    )
+    {
+        return new InterResult<TKey, TValue>(definition.Discriminator, key, value);
+    }
+
+    #endregion
+
+    #region InterResult serializetion
+
+    public static SerializedInterResult Serialize<TValue>(
+        this IInterResultDefinition<TValue> definition,
+        InterResult<TValue> interResult
+    )
+    {
+        Debug.Assert(definition.Discriminator == interResult.Discriminator);
+
+        return new SerializedInterResult(
+            definition.Discriminator,
+            Key: null,
+            definition.SerializeValueAndWrapException(interResult.Value)
+        );
+    }
+
+    public static SerializedInterResult Serialize<TKey, TValue>(
+        this IInterResultDefinition<TKey, TValue> definition,
+        InterResult<TKey, TValue> interResult
+    )
+    {
+        Debug.Assert(definition.Discriminator == interResult.Discriminator);
+
+        return new SerializedInterResult(
+            definition.Discriminator,
+            definition.SerializeKeyAndWrapException(interResult.Key),
+            definition.SerializeValueAndWrapException(interResult.Value)
+        );
+    }
+
+    #endregion
+
+    #region Key serialization
+
+    public static SerializedInterResultKey SerializeKeyAndWrapException<TKey, TValue>(
+        this IInterResultDefinition<TKey, TValue> definition,
+        TKey key
     )
     {
         try
         {
-            var serializeKeyValue = definition.SerializeKey(key.Value);
+            var serializeKeyValue = definition.SerializeKey(key);
             return new SerializedInterResultKey(serializeKeyValue);
         }
         catch (Exception e)
@@ -25,15 +79,14 @@ public static class InterResultDefinitionExtensions
         }
     }
 
-    internal static InterResultKey<TKey> Deserialize<TValue, TKey>(
-        this IKeyedInterResultDefinition<TValue, TKey> definition,
+    public static TKey DeserializeKeyAndWrapException<TKey, TValue>(
+        this IInterResultDefinition<TKey, TValue> definition,
         SerializedInterResultKey serializedKey
     )
     {
         try
         {
-            var serializeKeyValue = definition.DeserializeKey(serializedKey.Value);
-            return new InterResultKey<TKey>(serializeKeyValue);
+            return definition.DeserializeKey(serializedKey.Value);
         }
         catch (Exception e)
         {
@@ -46,17 +99,17 @@ public static class InterResultDefinitionExtensions
 
     #endregion
 
-    #region Result
+    #region Value serialization
 
-    internal static SerializedInterResult Serialize<TResult>(
-        this IInterResultDefinition<TResult> definition,
-        InterResult<TResult> result
+    public static SerializedInterResultValue SerializeValueAndWrapException<TValue>(
+        this IInterResultDefinition<TValue> definition,
+        TValue value
     )
     {
         try
         {
-            var serializedResultValue = definition.SerializeResult(result.Value);
-            return new SerializedInterResult(serializedResultValue);
+            var serializedResultValue = definition.SerializeValue(value);
+            return new SerializedInterResultValue(serializedResultValue);
         }
         catch (Exception e)
         {
@@ -67,15 +120,51 @@ public static class InterResultDefinitionExtensions
         }
     }
 
-    internal static InterResult<TResult> Deserialize<TResult>(
-        this IInterResultDefinition<TResult> definition,
-        SerializedInterResult serializedResult
+    public static TValue DeserializeValueAndWrapException<TValue>(
+        this IInterResultDefinition<TValue> definition,
+        SerializedInterResultValue serializedValue
     )
     {
         try
         {
-            var resultValue = definition.DeserializeResult(serializedResult.Value);
-            return new InterResult<TResult>(resultValue);
+            return definition.DeserializeValue(serializedValue.Value);
+        }
+        catch (Exception e)
+        {
+            throw new SerializationException(
+                $"Failed to deserialize value of inter result {definition.Discriminator}",
+                e
+            );
+        }
+    }
+
+    public static SerializedInterResultValue SerializeValueAndWrapException<TKey, TValue>(
+        this IInterResultDefinition<TKey, TValue> definition,
+        TValue value
+    )
+    {
+        try
+        {
+            var serializedResultValue = definition.SerializeValue(value);
+            return new SerializedInterResultValue(serializedResultValue);
+        }
+        catch (Exception e)
+        {
+            throw new SerializationException(
+                $"Failed to serialize value of inter result {definition.Discriminator}",
+                e
+            );
+        }
+    }
+
+    public static TValue DeserializeValueAndWrapException<TKey, TValue>(
+        this IInterResultDefinition<TKey, TValue> definition,
+        SerializedInterResultValue serializedValue
+    )
+    {
+        try
+        {
+            return definition.DeserializeValue(serializedValue.Value);
         }
         catch (Exception e)
         {

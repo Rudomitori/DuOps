@@ -22,19 +22,19 @@ internal static partial class OperationTelemetryLogs
 
     [LoggerMessage(
         LogLevel.Information,
-        "{OperationDiscriminator}({OperationId}).InterResults[{InterResultDiscriminator}] = '{SerializedResult}'"
+        "{OperationDiscriminator}({OperationId}).InterResults[{InterResultDiscriminator}] = '{InterResultValue}'"
     )]
     internal static partial void LogInterResultAdded(
         this ILogger<OperationTelemetry> logger,
         OperationDiscriminator operationDiscriminator,
         OperationId operationId,
         InterResultDiscriminator interResultDiscriminator,
-        SerializedInterResult serializedResult
+        SerializedInterResultValue interResultValue
     );
 
     [LoggerMessage(
         LogLevel.Information,
-        "{OperationDiscriminator}({OperationId}).InterResults[{InterResultDiscriminator}][{InterResultKey}] = '{SerializedResult}'"
+        "{OperationDiscriminator}({OperationId}).InterResults[{InterResultDiscriminator}][{InterResultKey}] = '{InterResultValue}'"
     )]
     internal static partial void LogInterResultAdded(
         this ILogger<OperationTelemetry> logger,
@@ -42,7 +42,7 @@ internal static partial class OperationTelemetryLogs
         OperationId operationId,
         InterResultDiscriminator interResultDiscriminator,
         SerializedInterResultKey interResultKey,
-        SerializedInterResult serializedResult
+        SerializedInterResultValue interResultValue
     );
 
     [LoggerMessage(

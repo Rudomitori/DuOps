@@ -1,4 +1,5 @@
 ﻿using DuOps.Core.OperationDefinitions;
+using DuOps.Core.Operations.InterResults;
 
 namespace DuOps.Core.Operations;
 
@@ -7,12 +8,7 @@ public sealed record Operation<TArgs, TResult>(
     OperationId Id,
     OperationPollingScheduleId? PollingScheduleId,
     DateTime CreatedAt,
-    OperationArgs<TArgs> Args,
-    OperationState<TResult> State
-) : Operation(Id, PollingScheduleId, CreatedAt);
-
-public abstract record Operation(
-    OperationId Id,
-    OperationPollingScheduleId? PollingScheduleId,
-    DateTime CreatedAt
+    TArgs Args,
+    OperationState<TResult> State,
+    IReadOnlyCollection<SerializedInterResult> SerializedInterResults
 );

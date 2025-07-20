@@ -17,21 +17,22 @@ public static class OperationDefinitionExtensions
             id,
             PollingScheduleId: null,
             createdAt,
-            new OperationArgs<TArgs>(args),
-            OperationState<TResult>.Yielded.Instance
+            args,
+            OperationState<TResult>.Yielded.Instance,
+            []
         );
     }
 
-    #region OperationArgs
+    #region Args serialization
 
-    public static SerializedOperationArgs Serialize<TArgs, TResult>(
+    public static SerializedOperationArgs SerializeArgsAndWrapException<TArgs, TResult>(
         this IOperationDefinition<TArgs, TResult> operationDefinition,
-        OperationArgs<TArgs> args
+        TArgs args
     )
     {
         try
         {
-            var serializedArgsValue = operationDefinition.SerializeArgs(args.Value);
+            var serializedArgsValue = operationDefinition.SerializeArgs(args);
             return new SerializedOperationArgs(serializedArgsValue);
         }
         catch (Exception e)
@@ -43,16 +44,14 @@ public static class OperationDefinitionExtensions
         }
     }
 
-    public static OperationArgs<TArgs> Deserialize<TArgs, TResult>(
+    public static TArgs DeserializeArgsAndWrapException<TArgs, TResult>(
         this IOperationDefinition<TArgs, TResult> operationDefinition,
         SerializedOperationArgs serializedArgs
     )
     {
         try
         {
-            var argsValue = operationDefinition.DeserializeArgs(serializedArgs.Value);
-
-            return new OperationArgs<TArgs>(argsValue);
+            return operationDefinition.DeserializeArgs(serializedArgs.Value);
         }
         catch (Exception e)
         {
@@ -65,16 +64,16 @@ public static class OperationDefinitionExtensions
 
     #endregion
 
-    #region OperationResult
+    #region Result serialization
 
-    public static SerializedOperationResult Serialize<TArgs, TResult>(
+    public static SerializedOperationResult SerializeResultAndWrapException<TArgs, TResult>(
         this IOperationDefinition<TArgs, TResult> operationDefinition,
-        OperationResult<TResult> operationResult
+        TResult operationResult
     )
     {
         try
         {
-            var serializedResultValue = operationDefinition.SerializeResult(operationResult.Value);
+            var serializedResultValue = operationDefinition.SerializeResult(operationResult);
             return new SerializedOperationResult(serializedResultValue);
         }
         catch (Exception e)
@@ -86,15 +85,14 @@ public static class OperationDefinitionExtensions
         }
     }
 
-    public static OperationResult<TResult> Deserialize<TArgs, TResult>(
+    public static TResult DeserializeResultAndWrapException<TArgs, TResult>(
         this IOperationDefinition<TArgs, TResult> operationDefinition,
         SerializedOperationResult serializedResult
     )
     {
         try
         {
-            var resultValue = operationDefinition.DeserializeResult(serializedResult.Value);
-            return new OperationResult<TResult>(resultValue);
+            return operationDefinition.DeserializeResult(serializedResult.Value);
         }
         catch (Exception e)
         {
@@ -107,7 +105,7 @@ public static class OperationDefinitionExtensions
 
     #endregion
 
-    #region OperationState
+    #region OperationState serialization
 
     public static SerializedOperationState Serialize<TArgs, TResult>(
         this IOperationDefinition<TArgs, TResult> operationDefinition,
@@ -118,7 +116,9 @@ public static class OperationDefinitionExtensions
         {
             OperationState<TResult>.Yielded => SerializedOperationState.Yielded.Instance,
             OperationState<TResult>.Finished { Result: var result } =>
-                new SerializedOperationState.Finished(operationDefinition.Serialize(result)),
+                new SerializedOperationState.Finished(
+                    operationDefinition.SerializeResultAndWrapException(result)
+                ),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(state),
                 state,
@@ -136,7 +136,9 @@ public static class OperationDefinitionExtensions
         {
             SerializedOperationState.Yielded => OperationState<TResult>.Yielded.Instance,
             SerializedOperationState.Finished { Result: var result } =>
-                new OperationState<TResult>.Finished(operationDefinition.Deserialize(result)),
+                new OperationState<TResult>.Finished(
+                    operationDefinition.DeserializeResultAndWrapException(result)
+                ),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(state),
                 state,
@@ -159,8 +161,9 @@ public static class OperationDefinitionExtensions
             operation.Id,
             operation.PollingScheduleId,
             operation.CreatedAt,
-            operationDefinition.Serialize(operation.Args),
-            operationDefinition.Serialize(operation.State)
+            operationDefinition.SerializeArgsAndWrapException(operation.Args),
+            operationDefinition.Serialize(operation.State),
+            operation.SerializedInterResults
         );
     }
 
@@ -174,8 +177,9 @@ public static class OperationDefinitionExtensions
             serializedOperation.Id,
             serializedOperation.PollingScheduleId,
             serializedOperation.StartedAt,
-            operationDefinition.Deserialize(serializedOperation.Args),
-            operationDefinition.Deserialize(serializedOperation.State)
+            operationDefinition.DeserializeArgsAndWrapException(serializedOperation.Args),
+            operationDefinition.Deserialize(serializedOperation.State),
+            serializedOperation.InterResults
         );
     }
 

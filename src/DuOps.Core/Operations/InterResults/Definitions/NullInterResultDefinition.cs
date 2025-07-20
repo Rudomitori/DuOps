@@ -3,9 +3,9 @@
 public sealed record NullInterResultDefinition(InterResultDiscriminator Discriminator)
     : IInterResultDefinition<object?>
 {
-    public object? DeserializeResult(string serializedResult) => null;
+    public object? DeserializeValue(string serializedResult) => null;
 
-    public string SerializeResult(object? result) => "";
+    public string SerializeValue(object? result) => "";
 
     public static NullInterResultDefinition From(string discriminator)
     {

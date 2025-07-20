@@ -1,3 +1,14 @@
-﻿namespace DuOps.Core.Operations.InterResults;
+using DuOps.Core.Operations.InterResults.Definitions;
 
-public readonly record struct InterResult<T>(T Value);
+namespace DuOps.Core.Operations.InterResults;
+
+public readonly record struct InterResult<TValue>(
+    InterResultDiscriminator Discriminator,
+    TValue Value
+);
+
+public readonly record struct InterResult<TKey, TValue>(
+    InterResultDiscriminator Discriminator,
+    TKey Key,
+    TValue Value
+);

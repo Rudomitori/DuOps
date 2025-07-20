@@ -1,14 +1,18 @@
 ﻿namespace DuOps.Core.Operations.InterResults.Definitions;
 
-public interface IInterResultDefinition<TResult> : IInterResultDefinition
+public interface IInterResultDefinition<TValue> : IInterResultDefinition
 {
-    string SerializeResult(TResult result);
+    string SerializeValue(TValue result);
 
-    TResult DeserializeResult(string serializedResult);
+    TValue DeserializeValue(string serializedResult);
 }
 
-public interface IKeyedInterResultDefinition<TResult, TKey> : IInterResultDefinition<TResult>
+public interface IInterResultDefinition<TKey, TValue> : IInterResultDefinition
 {
+    string SerializeValue(TValue result);
+
+    TValue DeserializeValue(string serializedResult);
+
     string SerializeKey(TKey key);
 
     TKey DeserializeKey(string serializedKey);

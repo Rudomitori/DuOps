@@ -1,5 +1,8 @@
 ﻿namespace DuOps.Core.Operations;
 
+// TODO: Disallow not trimmed ShardKey and Value
+// TODO: Disallow empty ShardKey and Value
+// TODO: Extract ShardKey into separate value type
 public readonly record struct OperationId(string? ShardKey, string Value)
 {
     public static OperationId NewGuid() => new(null, Guid.NewGuid().ToString());

@@ -33,4 +33,21 @@ public static class OperationStorageExtensions
         serializedOperation = await storage.GetOrAdd(serializedOperation, cancellationToken);
         return operationDefinition.Deserialize(serializedOperation);
     }
+
+    public static async Task AddResult<TArgs, TResult>(
+        this IOperationStorage storage,
+        IOperationDefinition<TArgs, TResult> operationDefinition,
+        OperationId operationId,
+        TResult result,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var serializedResult = operationDefinition.SerializeResultAndWrapException(result);
+        await storage.AddResult(
+            operationDefinition.Discriminator,
+            operationId,
+            serializedResult,
+            cancellationToken
+        );
+    }
 }

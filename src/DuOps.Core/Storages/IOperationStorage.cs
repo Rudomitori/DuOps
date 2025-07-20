@@ -1,7 +1,6 @@
 ﻿using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
 using DuOps.Core.Operations.InterResults;
-using DuOps.Core.Operations.InterResults.Definitions;
 
 namespace DuOps.Core.Storages;
 
@@ -18,24 +17,11 @@ public interface IOperationStorage
         CancellationToken cancellationToken = default
     );
 
-    Task<
-        IReadOnlyDictionary<
-            (InterResultDiscriminator Discriminator, SerializedInterResultKey? Key),
-            SerializedInterResult
-        >
-    > GetInterResults(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
-        CancellationToken cancellationToken = default
-    );
-
     Task AddInterResult(
         OperationDiscriminator operationDiscriminator,
         OperationId operationId,
-        InterResultDiscriminator interResultDiscriminator,
-        SerializedInterResultKey? key,
         SerializedInterResult result,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken = default
     );
 
     Task AddResult(
@@ -49,7 +35,7 @@ public interface IOperationStorage
         OperationDiscriminator discriminator,
         OperationId operationId,
         OperationPollingScheduleId scheduleId,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken = default
     );
 
     Task Delete(

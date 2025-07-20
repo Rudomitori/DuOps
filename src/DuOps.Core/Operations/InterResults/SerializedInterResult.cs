@@ -1,6 +1,9 @@
-﻿namespace DuOps.Core.Operations.InterResults;
+﻿using DuOps.Core.Operations.InterResults.Definitions;
 
-public readonly record struct SerializedInterResult(string Value)
-{
-    public override string ToString() => Value;
-}
+namespace DuOps.Core.Operations.InterResults;
+
+public readonly record struct SerializedInterResult(
+    InterResultDiscriminator Discriminator,
+    SerializedInterResultKey? Key,
+    SerializedInterResultValue Value
+);

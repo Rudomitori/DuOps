@@ -1,5 +1,5 @@
 ﻿using DuOps.Core.OperationDefinitions;
-using DuOps.Core.Operations.InterResults.Definitions;
+using DuOps.Core.Operations.InterResults;
 
 namespace DuOps.Core.Operations;
 
@@ -9,5 +9,6 @@ public sealed record SerializedOperation(
     OperationPollingScheduleId? PollingScheduleId,
     DateTime StartedAt,
     SerializedOperationArgs Args,
-    SerializedOperationState State
+    SerializedOperationState State,
+    IReadOnlyCollection<SerializedInterResult> InterResults
 );

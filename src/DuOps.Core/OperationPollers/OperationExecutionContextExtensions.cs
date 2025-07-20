@@ -4,15 +4,15 @@ namespace DuOps.Core.OperationPollers;
 
 public static class OperationExecutionContextExtensions
 {
-    public static async Task<TResult> RunWithCache<TResult>(
+    public static async Task<TValue> RunWithCache<TValue>(
         this IOperationExecutionContext context,
         InterResultDiscriminator discriminator,
-        Func<TResult, string> serialize,
-        Func<string, TResult> deserialize,
-        Func<Task<TResult>> action
+        Func<TValue, string> serialize,
+        Func<string, TValue> deserialize,
+        Func<Task<TValue>> action
     )
     {
-        var definition = new AdHocInterResultDefinition<TResult>(
+        var definition = new AdHocInterResultDefinition<TValue>(
             discriminator,
             serialize,
             deserialize
@@ -21,18 +21,18 @@ public static class OperationExecutionContextExtensions
         return await context.RunWithCache(definition, action);
     }
 
-    public static async Task<TResult> RunWithCache<TResult, TKey>(
+    public static async Task<TValue> RunWithCache<TKey, TValue>(
         this IOperationExecutionContext context,
         InterResultDiscriminator discriminator,
         TKey key,
-        Func<TResult, string> serialize,
-        Func<string, TResult> deserialize,
+        Func<TValue, string> serialize,
+        Func<string, TValue> deserialize,
         Func<TKey, string> serializeKey,
         Func<string, TKey> deserializeKey,
-        Func<Task<TResult>> action
+        Func<Task<TValue>> action
     )
     {
-        var definition = new AdHocKeyedInterResultDefinition<TResult, TKey>(
+        var definition = new AdHocInterResultDefinition<TKey, TValue>(
             discriminator,
             serialize,
             deserialize,

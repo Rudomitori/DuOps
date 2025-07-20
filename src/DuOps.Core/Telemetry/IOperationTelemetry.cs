@@ -15,9 +15,7 @@ public interface IOperationTelemetry
     void OnInterResultAdded(
         IOperationDefinition operationDefinition,
         OperationId operationId,
-        IInterResultDefinition resultDefinition,
-        SerializedInterResultKey? interResultKey,
-        SerializedInterResult serializedResult
+        SerializedInterResult interResult
     );
 
     void OnOperationFinished(

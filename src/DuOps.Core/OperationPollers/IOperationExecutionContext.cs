@@ -6,29 +6,32 @@ namespace DuOps.Core.OperationPollers;
 
 public interface IOperationExecutionContext
 {
-    Task AddInterResult<TResult>(IInterResultDefinition<TResult> resultDefinition, TResult value);
+    Task AddInterResult<TValue>(
+        IInterResultDefinition<TValue> resultDefinition,
+        TValue value,
+        CancellationToken cancellationToken = default
+    );
 
-    InterResult<TResult>? GetInterResultOrNull<TResult>(IInterResultDefinition<TResult> definition);
+    InterResult<TValue>? GetInterResultOrNull<TValue>(IInterResultDefinition<TValue> definition);
 
-    InterResult<TResult>? GetInterResultOrNull<TResult, TKey>(
-        IKeyedInterResultDefinition<TResult, TKey> definition,
+    InterResult<TKey, TValue>? GetInterResultOrNull<TKey, TValue>(
+        IInterResultDefinition<TKey, TValue> definition,
         TKey key
     );
 
-    IReadOnlyCollection<KeyValuePair<InterResultKey<TKey>, InterResult<TResult>>> GetInterResults<
-        TResult,
-        TKey
-    >(IKeyedInterResultDefinition<TResult, TKey> resultDefinition);
-
-    Task<TResult> RunWithCache<TResult>(
-        IInterResultDefinition<TResult> definition,
-        Func<Task<TResult>> action
+    IReadOnlyCollection<InterResult<TKey, TValue>> GetInterResults<TKey, TValue>(
+        IInterResultDefinition<TKey, TValue> definition
     );
 
-    Task<TResult> RunWithCache<TResult, TKey>(
-        IKeyedInterResultDefinition<TResult, TKey> definition,
-        TKey keyValue,
-        Func<Task<TResult>> action
+    Task<TValue> RunWithCache<TValue>(
+        IInterResultDefinition<TValue> definition,
+        Func<Task<TValue>> action
+    );
+
+    Task<TValue> RunWithCache<TKey, TValue>(
+        IInterResultDefinition<TKey, TValue> definition,
+        TKey key,
+        Func<Task<TValue>> action
     );
 
     OperationId OperationId { get; }
