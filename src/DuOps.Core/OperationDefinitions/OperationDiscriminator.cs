@@ -4,4 +4,7 @@
 public readonly record struct OperationDiscriminator(string Value)
 {
     public override string ToString() => Value;
+
+    public static implicit operator string(OperationDiscriminator discriminator) =>
+        discriminator.Value;
 }

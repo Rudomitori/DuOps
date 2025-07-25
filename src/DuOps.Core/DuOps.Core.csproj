@@ -7,8 +7,12 @@
   <ItemGroup>
     <PackageReference
       Include="Microsoft.Extensions.DependencyInjection.Abstractions"
-      Version="9.0.6"
+      Version="9.0.7"
     />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.6" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Telemetry.Abstractions" Version="9.7.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="DuOps.Core.Tests" />
   </ItemGroup>
 </Project>

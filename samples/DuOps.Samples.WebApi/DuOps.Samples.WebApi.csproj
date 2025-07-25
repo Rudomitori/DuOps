@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.4" />
+    <PackageReference
+      Include="OpenTelemetry.Exporter.Prometheus.AspNetCore"
+      Version="1.12.0-beta.1"
+    />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.12.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="8.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DuOps.Core\DuOps.Core.csproj" />
+    <ProjectReference Include="..\..\src\DuOps.Hangfire\DuOps.Hangfire.csproj" />
+    <ProjectReference Include="..\..\src\DuOps.InMemory\DuOps.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\DuOps.Npgsql\DuOps.Npgsql.csproj" />
+    <ProjectReference Include="..\..\src\DuOps.OpenTelemetry\DuOps.OpenTelemetry.csproj" />
+    <ProjectReference Include="..\..\src\DuOps.Testing\DuOps.Testing.csproj" />
+  </ItemGroup>
+</Project>

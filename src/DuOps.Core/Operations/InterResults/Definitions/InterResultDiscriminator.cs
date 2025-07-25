@@ -4,4 +4,7 @@
 public readonly record struct InterResultDiscriminator(string Value)
 {
     public override string ToString() => Value;
+
+    public static implicit operator string(InterResultDiscriminator discriminator) =>
+        discriminator.Value;
 }

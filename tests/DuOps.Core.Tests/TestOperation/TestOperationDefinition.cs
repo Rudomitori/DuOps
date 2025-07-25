@@ -1,7 +1,7 @@
 using System.Text.Json;
 using DuOps.Core.OperationDefinitions;
 
-namespace DuOps.Npgsql.Tests.TestOperation;
+namespace DuOps.Core.Tests.TestOperation;
 
 public sealed class TestOperationDefinition
     : IOperationDefinition<TestOperationArgs, TestOperationResult>

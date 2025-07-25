@@ -1,7 +1,7 @@
 using System.Text.Json;
 using DuOps.Core.Operations.InterResults.Definitions;
 
-namespace DuOps.Npgsql.Tests.TestOperation.InterResults.Second;
+namespace DuOps.Core.Tests.TestOperation.InterResults.Second;
 
 public sealed class SecondInterResultDefinition : IInterResultDefinition<double>
 {

@@ -15,7 +15,7 @@ internal sealed class OperationManager(
     public async Task<Operation<TArgs, TResult>> StartInBackground<TArgs, TResult>(
         IOperationDefinition<TArgs, TResult> definition,
         Operation<TArgs, TResult> operation,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken = default
     )
     {
         var operationId = operation.Id;

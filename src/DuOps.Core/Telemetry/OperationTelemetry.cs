@@ -2,11 +2,15 @@
 using DuOps.Core.Operations;
 using DuOps.Core.Operations.InterResults;
 using DuOps.Core.Operations.InterResults.Definitions;
+using DuOps.Core.Telemetry.Metrics;
 using Microsoft.Extensions.Logging;
 
 namespace DuOps.Core.Telemetry;
 
-internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : IOperationTelemetry
+internal sealed class OperationTelemetry(
+    ILogger<OperationTelemetry> logger,
+    IOperationMetrics metrics
+) : IOperationTelemetry
 {
     public void OnOperationStartedInBackground(
         IOperationDefinition operationDefinition,
@@ -19,6 +23,7 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
             operation.PollingScheduleId,
             operation.Args
         );
+        metrics.OnOperationStarted(operation.Discriminator);
     }
 
     public void OnInterResultAdded(
@@ -46,6 +51,7 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
                 interResult.Value
             );
         }
+        metrics.OnInterResultAdded(operationDefinition.Discriminator, interResult.Discriminator);
     }
 
     public void OnOperationThrewException(
@@ -59,6 +65,7 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
             operationDefinition.Discriminator,
             operationId
         );
+        metrics.OnOperationThrewException(operationDefinition.Discriminator, exception);
     }
 
     public void OnInterResultThrewException(
@@ -88,6 +95,11 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
                 interResultKey.Value
             );
         }
+        metrics.OnInterResultThrewException(
+            operationDefinition.Discriminator,
+            interResultDefinition.Discriminator,
+            exception
+        );
     }
 
     public void OnOperationYielded(
@@ -103,6 +115,8 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
             yieldReason,
             yieldReasonMessage
         );
+
+        metrics.OnOperationYielded(operationDefinition.Discriminator, yieldReason);
     }
 
     public void OnOperationFinished(
@@ -116,5 +130,7 @@ internal sealed class OperationTelemetry(ILogger<OperationTelemetry> logger) : I
             operationId,
             serializedResult
         );
+
+        metrics.OnOperationFinished(operationDefinition.Discriminator);
     }
 }
