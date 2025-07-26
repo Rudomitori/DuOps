@@ -54,7 +54,7 @@ internal static partial class OperationTelemetryLogs
         OperationDiscriminator operationDiscriminator,
         OperationId operationId,
         string yieldReason,
-        string yieldReasonMessage
+        string? yieldReasonMessage
     );
 
     [LoggerMessage(LogLevel.Error, "{OperationDiscriminator}({OperationId}) threw an exception")]

@@ -1,4 +1,5 @@
-﻿using DuOps.Core.OperationDefinitions;
+﻿using DuOps.Core.Exceptions;
+using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
 using DuOps.Core.Operations.InterResults;
 using DuOps.Core.Operations.InterResults.Definitions;
@@ -123,6 +124,26 @@ internal sealed class OperationPoller(
 
             serializedResult = operationDefinition.SerializeResultAndWrapException(result);
             result = operationDefinition.DeserializeResultAndWrapException(serializedResult);
+        }
+        catch (OperationCanceledException) when (yieldToken.IsCancellationRequested)
+        {
+            telemetry.OnOperationYielded(
+                operationDefinition,
+                operationId,
+                "YieldedToken",
+                "Yielded via yield token"
+            );
+            return OperationState<TResult>.Yielded.Instance;
+        }
+        catch (YieldException e)
+        {
+            telemetry.OnOperationYielded(
+                operationDefinition,
+                operationId,
+                e.Reason,
+                e.ReasonDetails
+            );
+            return OperationState<TResult>.Yielded.Instance;
         }
         catch (Exception e)
         {
@@ -261,6 +282,14 @@ internal sealed class OperationPoller(
                 serializedValue = definition.SerializeValueAndWrapException(value);
                 value = definition.DeserializeValueAndWrapException(serializedValue);
             }
+            catch (OperationCanceledException) when (YieldToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (YieldException)
+            {
+                throw;
+            }
             catch (Exception e)
             {
                 telemetry.OnInterResultThrewException(
@@ -319,6 +348,14 @@ internal sealed class OperationPoller(
                 serializedValue = definition.SerializeValueAndWrapException(value);
                 value = definition.DeserializeValueAndWrapException(serializedValue);
             }
+            catch (OperationCanceledException) when (YieldToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (YieldException)
+            {
+                throw;
+            }
             catch (Exception e)
             {
                 telemetry.OnInterResultThrewException(
@@ -349,6 +386,11 @@ internal sealed class OperationPoller(
             telemetry.OnInterResultAdded(operationDefinition, operationId, interResult);
 
             return value;
+        }
+
+        public Task Yield(string reason, string? reasonDetails = null)
+        {
+            return Task.FromException(new YieldException(reason, reasonDetails));
         }
 
         #endregion

@@ -1,4 +1,5 @@
-﻿using DuOps.Core.Operations;
+﻿using System.Diagnostics.CodeAnalysis;
+using DuOps.Core.Operations;
 using DuOps.Core.Operations.InterResults;
 using DuOps.Core.Operations.InterResults.Definitions;
 
@@ -33,6 +34,8 @@ public interface IOperationExecutionContext
         TKey key,
         Func<Task<TValue>> action
     );
+
+    Task Yield(string reason, string? reasonDetails = null);
 
     OperationId OperationId { get; }
 

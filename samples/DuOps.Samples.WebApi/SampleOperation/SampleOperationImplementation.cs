@@ -17,6 +17,21 @@ public sealed class SampleOperationImplementation
             () => Task.FromResult(Random.Shared.Next())
         );
 
+        await context.RunWithCache(
+            AwaitExternalLongProcessInterResultDefinition.Instance,
+            async () =>
+            {
+                var externalProcessIsFinished = Random.Shared.Next() % 5 == 0;
+                if (externalProcessIsFinished)
+                {
+                    return DateTime.UtcNow;
+                }
+
+                await context.Yield("WaitExternalLongProcess");
+                return default;
+            }
+        );
+
         return new SampleOperationResult();
     }
 }

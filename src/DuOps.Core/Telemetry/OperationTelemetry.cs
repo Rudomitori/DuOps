@@ -106,14 +106,14 @@ internal sealed class OperationTelemetry(
         IOperationDefinition operationDefinition,
         OperationId operationId,
         string yieldReason,
-        string yieldReasonMessage
+        string? yieldReasonMessage
     )
     {
         logger.LogOperationYielded(
             operationDefinition.Discriminator,
             operationId,
             yieldReason,
-            yieldReasonMessage
+            yieldReasonMessage ?? ""
         );
 
         metrics.OnOperationYielded(operationDefinition.Discriminator, yieldReason);

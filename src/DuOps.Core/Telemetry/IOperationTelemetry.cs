@@ -42,6 +42,6 @@ public interface IOperationTelemetry
         IOperationDefinition operationDefinition,
         OperationId operationId,
         string yieldReason,
-        string yieldReasonMessage
+        string? yieldReasonMessage
     );
 }
