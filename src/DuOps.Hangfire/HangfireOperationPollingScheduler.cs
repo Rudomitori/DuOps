@@ -5,16 +5,16 @@ using DuOps.Core.PollingSchedule;
 using DuOps.Core.Registry;
 using DuOps.Core.Storages;
 using Hangfire;
+using Hangfire.Common;
 using Hangfire.Server;
+using Hangfire.States;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace DuOps.Hangfire;
 
-public sealed class HangfireOperationPollingScheduler(
+internal sealed class HangfireOperationPollingScheduler(
     IOperationDefinitionRegistry operationDefinitionRegistry,
     IBackgroundJobClientV2 backgroundJobClient,
-    IOperationStorage operationStorage,
-    IOperationPoller operationPoller,
     IServiceProvider serviceProvider
 ) : IOperationPollingScheduler
 {
@@ -37,6 +37,7 @@ public sealed class HangfireOperationPollingScheduler(
         return Task.FromResult(new OperationPollingScheduleId(id));
     }
 
+    [HangfireFilter]
     public async Task HangfireCallback(
         string operationDiscriminator,
         string? operationIdShardKey,
@@ -45,8 +46,6 @@ public sealed class HangfireOperationPollingScheduler(
         CancellationToken cancellationToken
     )
     {
-        var backgroundJobId = performContext.BackgroundJob.Id;
-        var pollingScheduleId = new OperationPollingScheduleId(backgroundJobId);
         var discriminator = new OperationDiscriminator(operationDiscriminator);
         var operationId = new OperationId(operationIdShardKey, operationIdValue);
 
@@ -55,20 +54,27 @@ public sealed class HangfireOperationPollingScheduler(
             object?
         >(
             discriminator,
-            new TypedHangfireCallbackProxy(this, operationId, pollingScheduleId, cancellationToken)
+            new TypedHangfireCallbackProxy(this, operationId, performContext, cancellationToken)
         );
     }
 
     private async Task TypedHangfireCallback<TArgs, TResult>(
         IOperationDefinition<TArgs, TResult> operationDefinition,
         OperationId operationId,
-        OperationPollingScheduleId pollingScheduleId,
+        PerformContext performContext,
         CancellationToken cancellationToken
     )
     {
         using var serviceScope = serviceProvider.CreateScope();
+        var operationPoller = serviceScope.ServiceProvider.GetRequiredService<IOperationPoller>();
+        var operationStorage = serviceScope.ServiceProvider.GetRequiredService<IOperationStorage>();
 
-        var operation = await GetOperation(operationDefinition, operationId, cancellationToken);
+        var operation = await GetOperation(
+            operationStorage,
+            operationDefinition,
+            operationId,
+            cancellationToken
+        );
 
         // TODO: Check PollingScheduleId
 
@@ -80,13 +86,12 @@ public sealed class HangfireOperationPollingScheduler(
 
         if (result is OperationState<TResult>.Yielded)
         {
-            throw new Exception(
-                $"Operation({operationDefinition.Discriminator.Value};{operationId.ShardKey};{operationId.Value}) yielded"
-            );
+            performContext.SetOperationYielded();
         }
     }
 
     private async Task<SerializedOperation> GetOperation<TArgs, TResult>(
+        IOperationStorage operationStorage,
         IOperationDefinition<TArgs, TResult> operationDefinition,
         OperationId operationId,
         CancellationToken cancellationToken
@@ -112,14 +117,14 @@ public sealed class HangfireOperationPollingScheduler(
         }
 
         throw new InvalidOperationException(
-            $"Operation({operationDefinition.Discriminator.Value};{operationId.ShardKey};{operationId.Value}) was not found"
+            $"{operationDefinition.Discriminator.Value}({operationId}) was not found"
         );
     }
 
     private readonly struct TypedHangfireCallbackProxy(
         HangfireOperationPollingScheduler pollingScheduler,
         OperationId operationId,
-        OperationPollingScheduleId pollingScheduleId,
+        PerformContext performContext,
         CancellationToken cancellationToken
     ) : IOperationDefinitionGenericCallback<object?>
     {
@@ -130,11 +135,39 @@ public sealed class HangfireOperationPollingScheduler(
             await pollingScheduler.TypedHangfireCallback(
                 operationDefinition,
                 operationId,
-                pollingScheduleId,
+                performContext,
                 cancellationToken
             );
 
             return null;
         }
+    }
+
+    private sealed class HangfireFilter : JobFilterAttribute, IElectStateFilter
+    {
+        public void OnStateElection(ElectStateContext context)
+        {
+            if (context.CandidateState is SucceededState && context.GetOperationYielded())
+            {
+                context.CandidateState = new ScheduledState(TimeSpan.FromMilliseconds(100));
+            }
+        }
+    }
+}
+
+internal static class HangfireContextExtensions
+{
+    private const string OperationYieldedCustomDataKey = "DuOps.OperationYielded";
+    private const string OperationYieldedCustomDataValue = "true";
+
+    internal static void SetOperationYielded(this PerformContext context)
+    {
+        context.Items[OperationYieldedCustomDataKey] = OperationYieldedCustomDataValue;
+    }
+
+    internal static bool GetOperationYielded(this ElectStateContext context)
+    {
+        return context.CustomData.TryGetValue(OperationYieldedCustomDataKey, out var value)
+            && value is OperationYieldedCustomDataValue;
     }
 }

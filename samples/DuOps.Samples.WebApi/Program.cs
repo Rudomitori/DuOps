@@ -3,10 +3,12 @@ using DuOps.Core.OperationDefinitions;
 using DuOps.Core.OperationManagers;
 using DuOps.Core.OperationPollers;
 using DuOps.Core.Operations;
-using DuOps.InMemory;
+using DuOps.Hangfire;
 using DuOps.Npgsql;
 using DuOps.OpenTelemetry;
 using DuOps.Samples.WebApi.SampleOperation;
+using Hangfire;
+using Hangfire.MemoryStorage;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using OpenTelemetry.Metrics;
@@ -27,13 +29,19 @@ builder.Services.AddDuOps(builder =>
 {
     builder.AddOpenTelemetryInstrumentation();
     builder.Services.AddNpgsqlOperationStorage();
-    builder.Services.AddInMemoryBackgroundOperationPollScheduler();
+    builder.Services.AddHangfireOperationPollingScheduler();
 
     builder.Services.AddDuOpsOperation<
         SampleOperationArgs,
         SampleOperationResult,
         SampleOperationImplementation
     >(SampleOperationDefinition.Instance);
+});
+
+builder.Services.AddHangfire(config => config.UseMemoryStorage());
+builder.Services.AddHangfireServer(config =>
+{
+    config.SchedulePollingInterval = TimeSpan.FromMilliseconds(200);
 });
 
 var app = builder.Build();
