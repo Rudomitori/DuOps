@@ -2,7 +2,6 @@ namespace DuOps.Npgsql.Dtos;
 
 internal sealed record OperationDto(
     string Discriminator,
-    string? ShardKey,
     string Id,
     string? PollingScheduleId,
     DateTime StartedAt,

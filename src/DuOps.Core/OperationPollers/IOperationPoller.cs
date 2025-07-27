@@ -11,6 +11,11 @@ public interface IOperationPoller
         CancellationToken yieldToken = default
     );
 
+    Task<SerializedOperationState> PollOperation(
+        SerializedOperation serializedOperation,
+        CancellationToken yieldToken = default
+    );
+
     Task<OperationState<TResult>> PollOperation<TArgs, TResult>(
         IOperationDefinition<TArgs, TResult> operationDefinition,
         OperationId operationId,

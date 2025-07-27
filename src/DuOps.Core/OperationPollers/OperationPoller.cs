@@ -32,6 +32,14 @@ internal sealed class OperationPoller(
         if (serializedOperation is null)
             throw new InvalidOperationException($"Operation {operationId} was not found");
 
+        return await PollOperation(serializedOperation, yieldToken);
+    }
+
+    public async Task<SerializedOperationState> PollOperation(
+        SerializedOperation serializedOperation,
+        CancellationToken yieldToken = default
+    )
+    {
         if (serializedOperation.State is SerializedOperationState.Finished finished)
         {
             return finished;
@@ -41,7 +49,7 @@ internal sealed class OperationPoller(
             TypedPollOperationCallbackProxy,
             SerializedOperationState
         >(
-            operationDiscriminator,
+            serializedOperation.Discriminator,
             new TypedPollOperationCallbackProxy(this, serializedOperation, yieldToken)
         );
     }
@@ -248,12 +256,21 @@ internal sealed class OperationPoller(
         {
             return serializedInterResults
                 .Where(x => x.Key.Discriminator == definition.Discriminator)
-                .Select(x => new InterResult<TKey, TValue>(
-                    x.Key.Discriminator,
-                    // TODO: Add null check
-                    definition.DeserializeKeyAndWrapException(x.Key.Key.Value),
-                    definition.DeserializeValueAndWrapException(x.Value)
-                ))
+                .Select(x =>
+                {
+                    if (x.Key.Key is null)
+                    {
+                        throw new InvalidOperationException(
+                            "Not keyed inter result can not be read as keyed inter result"
+                        );
+                    }
+
+                    return new InterResult<TKey, TValue>(
+                        x.Key.Discriminator,
+                        definition.DeserializeKeyAndWrapException(x.Key.Key.Value),
+                        definition.DeserializeValueAndWrapException(x.Value)
+                    );
+                })
                 .ToArray();
         }
 

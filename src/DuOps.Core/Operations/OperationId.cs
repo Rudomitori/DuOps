@@ -1,21 +1,28 @@
-﻿namespace DuOps.Core.Operations;
+﻿using System.Text.RegularExpressions;
 
-// TODO: Disallow not trimmed ShardKey and Value
-// TODO: Disallow empty ShardKey and Value
-// TODO: Extract ShardKey into separate value type
-public readonly record struct OperationId(string? ShardKey, string Value)
+namespace DuOps.Core.Operations;
+
+public readonly partial record struct OperationId(string Value)
 {
-    public static OperationId NewGuid() => new(null, Guid.NewGuid().ToString());
+    public string Value { get; } =
+        ValidateValue(Value ?? throw new ArgumentNullException(nameof(Value)));
 
-    public static OperationId NewGuid(string sharkKey) => new(sharkKey, Guid.NewGuid().ToString());
+    [GeneratedRegex(@"^\s|\s$")]
+    private static partial Regex ValueRegex();
 
-    public override string ToString()
+    private static string ValidateValue(string value)
     {
-        if (ShardKey is null)
+        if (string.IsNullOrEmpty(value) || ValueRegex().IsMatch(value))
         {
-            return Value;
+            throw new ArgumentException("OperationId must be trimmed not empty string");
         }
 
-        return $"{ShardKey}|{Value}";
+        return value;
     }
+
+    public static OperationId NewGuid() => new(Guid.NewGuid().ToString());
+
+    public static OperationId NewUuidV7() => new(Guid.CreateVersion7().ToString());
+
+    public override string ToString() => Value;
 }

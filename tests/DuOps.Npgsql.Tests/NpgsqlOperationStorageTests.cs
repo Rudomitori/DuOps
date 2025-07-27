@@ -36,7 +36,6 @@ public sealed class NpgsqlOperationStorageTests
             create table if not exists duops_operations
             (
                 discriminator       text                     not null,
-                shard_key           text,
                 id                  text                     not null,
 
                 polling_schedule_id text,

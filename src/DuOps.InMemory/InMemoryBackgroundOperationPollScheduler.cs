@@ -3,21 +3,24 @@ using DuOps.Core.OperationDefinitions;
 using DuOps.Core.OperationPollers;
 using DuOps.Core.Operations;
 using DuOps.Core.PollingSchedule;
+using DuOps.Core.Storages;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace DuOps.InMemory;
 
-internal sealed class InMemoryBackgroundOperationPollScheduler(IServiceProvider serviceProvider)
-    : BackgroundService,
-        IOperationPollingScheduler
+internal sealed class InMemoryBackgroundOperationPollScheduler(
+    IServiceProvider serviceProvider,
+    ILogger<InMemoryBackgroundOperationPollScheduler> logger
+) : BackgroundService, IOperationPollingScheduler
 {
     private readonly ConcurrentQueue<OperationQueueItem> _operationsQueue = new();
 
     private readonly record struct OperationQueueItem(
         OperationPollingScheduleId PollingScheduleId,
         OperationDiscriminator OperationDiscriminator,
-        OperationId operationId
+        OperationId OperationId
     );
 
     public Task<OperationPollingScheduleId> SchedulePolling<TArgs, TResult>(
@@ -48,16 +51,32 @@ internal sealed class InMemoryBackgroundOperationPollScheduler(IServiceProvider 
                 continue;
             }
 
-            // TODO: Compare polling schedule ids
-
             await using var scope = serviceProvider.CreateAsyncScope();
             var operationPoller = scope.ServiceProvider.GetRequiredService<IOperationPoller>();
+            var operationStorage = scope.ServiceProvider.GetRequiredService<IOperationStorage>();
+
+            var operation = await GetOperation(
+                operationStorage,
+                queueItem.OperationDiscriminator,
+                queueItem.OperationId,
+                stoppingToken
+            );
+
+            if (queueItem.PollingScheduleId != operation.PollingScheduleId)
+            {
+                logger.LogError(
+                    "Skip {OperationDiscriminator}({OperationId}), because Operation.PollingScheduleId != enqueued PollingScheduleId",
+                    operation.Discriminator,
+                    queueItem.OperationId
+                );
+                continue;
+            }
 
             try
             {
                 var operationState = await operationPoller.PollOperation(
                     queueItem.OperationDiscriminator,
-                    queueItem.operationId,
+                    queueItem.OperationId,
                     stoppingToken
                 );
 
@@ -70,11 +89,43 @@ internal sealed class InMemoryBackgroundOperationPollScheduler(IServiceProvider 
             {
                 return;
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(50), stoppingToken);
+                var reenqueueDelay = TimeSpan.FromMilliseconds(50);
+
+                logger.LogError(
+                    e,
+                    "Polling of {OperationDiscriminator}({OperationId}) failed. Operation will be reenqueued in {ReenqueueDelay}",
+                    queueItem.OperationDiscriminator,
+                    queueItem.OperationId,
+                    reenqueueDelay
+                );
+                await Task.Delay(reenqueueDelay, stoppingToken);
                 _operationsQueue.Enqueue(queueItem);
             }
         }
+    }
+
+    private async Task<SerializedOperation> GetOperation(
+        IOperationStorage operationStorage,
+        OperationDiscriminator discriminator,
+        OperationId operationId,
+        CancellationToken cancellationToken
+    )
+    {
+        var attemptsInterval = TimeSpan.FromMilliseconds(10);
+
+        var operation = await operationStorage.AwaitOperationAndGetByIdOrDefault(
+            discriminator,
+            operationId,
+            attemptsInterval,
+            attemptsInterval * 10,
+            cancellationToken
+        );
+
+        return operation
+            ?? throw new InvalidOperationException(
+                $"{discriminator.Value}({operationId}) was not found"
+            );
     }
 }

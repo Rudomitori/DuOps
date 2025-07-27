@@ -1,4 +1,5 @@
-﻿using DuOps.Core.OperationDefinitions;
+﻿using System.Diagnostics;
+using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
 
 namespace DuOps.Core.Storages;
@@ -49,5 +50,35 @@ public static class OperationStorageExtensions
             serializedResult,
             cancellationToken
         );
+    }
+
+    public static async Task<SerializedOperation?> AwaitOperationAndGetByIdOrDefault(
+        this IOperationStorage storage,
+        OperationDiscriminator discriminator,
+        OperationId operationId,
+        TimeSpan attemptsInterval,
+        TimeSpan maxWaitTime,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var stopWatch = Stopwatch.StartNew();
+
+        var operation = await storage.GetByIdOrDefault(
+            discriminator,
+            operationId,
+            cancellationToken
+        );
+
+        while (operation is null && stopWatch.Elapsed + attemptsInterval < maxWaitTime)
+        {
+            await Task.Delay(attemptsInterval, cancellationToken);
+            operation = await storage.GetByIdOrDefault(
+                discriminator,
+                operationId,
+                cancellationToken
+            );
+        }
+
+        return operation;
     }
 }

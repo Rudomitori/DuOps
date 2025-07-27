@@ -52,7 +52,6 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
                 $"""
                 INSERT INTO duops_operations (
                     discriminator, 
-                    shard_key,
                     id,
                     polling_schedule_id,
                     started_at,
@@ -63,7 +62,6 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
                 )
                 VALUES (
                     @Discriminator, 
-                    @ShardKey,
                     @Id,
                     @PollingScheduleId,
                     @StartedAt,
@@ -359,7 +357,7 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
 
         return new SerializedOperation(
             new OperationDiscriminator(dto.Discriminator),
-            new OperationId(dto.ShardKey, dto.Id),
+            new OperationId(dto.Id),
             dto.PollingScheduleId is null
                 ? null
                 : new OperationPollingScheduleId(dto.PollingScheduleId),
@@ -378,7 +376,6 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
 
         return new OperationDto(
             operation.Discriminator.Value,
-            operation.Id.ShardKey,
             operation.Id.Value,
             operation.PollingScheduleId?.Value,
             operation.StartedAt,
@@ -455,8 +452,7 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
                         var interResult = new SerializedInterResult(
                             discriminator,
                             key,
-                            // TODO: Throw meaningful exception on null
-                            new SerializedInterResultValue(innerProperty.Value.GetString())
+                            new SerializedInterResultValue(innerProperty.Value.GetString()!)
                         );
                         interResults.Add(interResult);
                     }
@@ -474,7 +470,6 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
 
     private const string DtoFields = """
             discriminator as "Discriminator",
-            shard_key as "ShardKey",
             id as "Id",
             polling_schedule_id as "PollingScheduleId",
             started_at as "StartedAt",
