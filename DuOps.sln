@@ -7,6 +7,9 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Testing", "src\DuOps.Testing\DuOps.Testing.csproj", "{429C3F1E-CEF9-442B-B2DD-E4F60FC26D21}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{9617F14E-DBA4-49A4-B1EE-BACF8160F49E}"
+	ProjectSection(SolutionItems) = preProject
+		tests\Directory.Build.props = tests\Directory.Build.props
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Core.Tests", "tests\DuOps.Core.Tests\DuOps.Core.Tests.csproj", "{309D1B2C-B4DE-411A-B6E3-5444A21C6DD1}"
 EndProject
@@ -19,6 +22,9 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Npgsql.Tests", "tests\DuOps.Npgsql.Tests\DuOps.Npgsql.Tests.csproj", "{F09BDD66-B0B0-4249-A117-B01D07165107}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Samples", "Samples", "{75A55A2A-D54D-420E-9C7A-37C0DA2B45D5}"
+	ProjectSection(SolutionItems) = preProject
+		samples\Directory.Build.props = samples\Directory.Build.props
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Samples.WebApi", "samples\DuOps.Samples.WebApi\DuOps.Samples.WebApi.csproj", "{EDDBF12C-3DC9-48F2-B508-A4FAFBBD2CF9}"
 EndProject
@@ -27,6 +33,14 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.InMemory", "src\DuOps.InMemory\DuOps.InMemory.csproj", "{B6BB5FE1-9A4F-4D26-A15F-1E928E105ED8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DuOps.Npgsql.Migrations", "src\DuOps.Npgsql.Migrations\DuOps.Npgsql.Migrations.csproj", "{92417E11-9270-48D1-AEC6-BE07B4BB7ADB}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "common", "common", "{12D0D200-9D73-4246-AABB-1F5016FAE787}"
+	ProjectSection(SolutionItems) = preProject
+		Directory.Build.props = Directory.Build.props
+		.gitignore = .gitignore
+		README.md = README.md
+		.config\dotnet-tools.json = .config\dotnet-tools.json
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
