@@ -3,6 +3,6 @@
     <ProjectReference Include="..\DuOps.Core\DuOps.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Hangfire.Core" Version="1.8.20" />
+    <PackageReference Include="Hangfire.Core" />
   </ItemGroup>
 </Project>

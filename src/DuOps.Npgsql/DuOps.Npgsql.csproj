@@ -3,8 +3,8 @@
     <ProjectReference Include="..\DuOps.Core\DuOps.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.66" />
-    <PackageReference Include="Npgsql" Version="9.0.3" />
+    <PackageReference Include="Dapper" />
+    <PackageReference Include="Npgsql" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="DuOps.Npgsql.Tests" />
