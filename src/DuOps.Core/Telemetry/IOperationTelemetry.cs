@@ -27,7 +27,21 @@ public interface IOperationTelemetry
     void OnOperationThrewException(
         IOperationDefinition operationDefinition,
         OperationId operationId,
+        Exception exception,
+        DateTimeOffset retryingAt
+    );
+
+    void OnOperationFailed(
+        IOperationDefinition operationDefinition,
+        OperationId operationId,
         Exception exception
+    );
+
+    void OnOperationWaiting(
+        IOperationDefinition operationDefinition,
+        OperationId operationId,
+        DateTimeOffset waitingUntil,
+        string reason
     );
 
     void OnInterResultThrewException(
@@ -38,10 +52,5 @@ public interface IOperationTelemetry
         Exception exception
     );
 
-    void OnOperationYielded(
-        IOperationDefinition operationDefinition,
-        OperationId operationId,
-        string yieldReason,
-        string? yieldReasonMessage
-    );
+    void OnOperationYielded(IOperationDefinition operationDefinition, OperationId operationId);
 }

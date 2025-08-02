@@ -57,15 +57,45 @@ internal sealed class OperationTelemetry(
     public void OnOperationThrewException(
         IOperationDefinition operationDefinition,
         OperationId operationId,
-        Exception exception
+        Exception exception,
+        DateTimeOffset retryingAt
     )
     {
         logger.LogOperationThrewException(
             exception,
             operationDefinition.Discriminator,
-            operationId
+            operationId,
+            retryingAt
         );
+
         metrics.OnOperationThrewException(operationDefinition.Discriminator, exception);
+    }
+
+    public void OnOperationFailed(
+        IOperationDefinition operationDefinition,
+        OperationId operationId,
+        Exception exception
+    )
+    {
+        logger.LogOperationFailed(exception, operationDefinition.Discriminator, operationId);
+        metrics.OnOperationThrewException(operationDefinition.Discriminator, exception);
+        metrics.OnOperationFailed(operationDefinition.Discriminator);
+    }
+
+    public void OnOperationWaiting(
+        IOperationDefinition operationDefinition,
+        OperationId operationId,
+        DateTimeOffset waitingUntil,
+        string reason
+    )
+    {
+        logger.LogOperationWaiting(
+            operationDefinition.Discriminator,
+            operationId,
+            waitingUntil,
+            reason
+        );
+        metrics.OnOperationWaiting(operationDefinition.Discriminator, reason);
     }
 
     public void OnInterResultThrewException(
@@ -104,19 +134,12 @@ internal sealed class OperationTelemetry(
 
     public void OnOperationYielded(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
-        string yieldReason,
-        string? yieldReasonMessage
+        OperationId operationId
     )
     {
-        logger.LogOperationYielded(
-            operationDefinition.Discriminator,
-            operationId,
-            yieldReason,
-            yieldReasonMessage ?? ""
-        );
+        logger.LogOperationYielded(operationDefinition.Discriminator, operationId);
 
-        metrics.OnOperationYielded(operationDefinition.Discriminator, yieldReason);
+        metrics.OnOperationYielded(operationDefinition.Discriminator);
     }
 
     public void OnOperationFinished(

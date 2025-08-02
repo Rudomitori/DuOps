@@ -45,20 +45,42 @@ internal static partial class OperationTelemetryLogs
         SerializedInterResultValue interResultValue
     );
 
-    [LoggerMessage(
-        LogLevel.Information,
-        "{OperationDiscriminator}({OperationId}) yielded because {YieldReason}: {YieldReasonMessage}"
-    )]
+    [LoggerMessage(LogLevel.Information, "{OperationDiscriminator}({OperationId}) yielded")]
     internal static partial void LogOperationYielded(
         this ILogger<OperationTelemetry> logger,
         OperationDiscriminator operationDiscriminator,
-        OperationId operationId,
-        string yieldReason,
-        string? yieldReasonMessage
+        OperationId operationId
     );
 
-    [LoggerMessage(LogLevel.Error, "{OperationDiscriminator}({OperationId}) threw an exception")]
+    [LoggerMessage(
+        LogLevel.Information,
+        "{OperationDiscriminator}({OperationId}) is waiting until {WaitingUntil:u} because {Reason}"
+    )]
+    internal static partial void LogOperationWaiting(
+        this ILogger<OperationTelemetry> logger,
+        OperationDiscriminator operationDiscriminator,
+        OperationId operationId,
+        DateTimeOffset waitingUntil,
+        string reason
+    );
+
+    [LoggerMessage(
+        LogLevel.Error,
+        "{OperationDiscriminator}({OperationId}) threw an exception and will be retried at {RetryingAt}"
+    )]
     internal static partial void LogOperationThrewException(
+        this ILogger<OperationTelemetry> logger,
+        Exception exception,
+        OperationDiscriminator operationDiscriminator,
+        OperationId operationId,
+        DateTimeOffset retryingAt
+    );
+
+    [LoggerMessage(
+        LogLevel.Error,
+        "{OperationDiscriminator}({OperationId}) threw an exception and is marked as failed"
+    )]
+    internal static partial void LogOperationFailed(
         this ILogger<OperationTelemetry> logger,
         Exception exception,
         OperationDiscriminator operationDiscriminator,

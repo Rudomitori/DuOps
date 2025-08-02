@@ -24,10 +24,10 @@ public interface IOperationStorage
         CancellationToken cancellationToken = default
     );
 
-    Task AddResult(
-        OperationDiscriminator discriminator,
+    Task SetState(
+        OperationDiscriminator operationDiscriminator,
         OperationId operationId,
-        SerializedOperationResult serializedOperationResult,
+        SerializedOperationState state,
         CancellationToken cancellationToken = default
     );
 

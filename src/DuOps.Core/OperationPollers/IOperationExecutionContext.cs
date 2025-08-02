@@ -1,5 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using DuOps.Core.Operations;
+﻿using DuOps.Core.Operations;
 using DuOps.Core.Operations.InterResults;
 using DuOps.Core.Operations.InterResults.Definitions;
 
@@ -35,7 +34,9 @@ public interface IOperationExecutionContext
         Func<Task<TValue>> action
     );
 
-    Task Yield(string reason, string? reasonDetails = null);
+    public Task Wait(string reason, TimeSpan duration);
+
+    public Task Wait(string reason, DateTimeOffset until);
 
     OperationId OperationId { get; }
 

@@ -17,12 +17,16 @@ public interface IOperationMetrics
         Exception exception
     );
 
+    void OnOperationWaiting(OperationDiscriminator operationDiscriminator, string reason);
+
+    void OnOperationFailed(OperationDiscriminator operationDiscriminator);
+
     void OnInterResultThrewException(
         OperationDiscriminator operationDiscriminator,
         InterResultDiscriminator interResultDiscriminator,
         Exception exception
     );
 
-    void OnOperationYielded(OperationDiscriminator discriminator, string reason);
+    void OnOperationYielded(OperationDiscriminator discriminator);
     void OnOperationFinished(OperationDiscriminator discriminator);
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DuOps.Core.OperationDefinitions;
+using DuOps.Core.OperationDefinitions.RetryPolicies;
 
 namespace DuOps.Core.Tests.TestOperation;
 
@@ -9,6 +10,8 @@ public sealed class TestOperationDefinition
     public static readonly TestOperationDefinition Instance = new();
 
     public OperationDiscriminator Discriminator { get; } = new("TestOperation");
+
+    public IOperationRetryPolicy RetryPolicy => ZeroOperationRetryingPolicy.Instance;
 
     public string SerializeArgs(TestOperationArgs args) => JsonSerializer.Serialize(args);
 

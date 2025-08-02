@@ -43,17 +43,14 @@ public sealed class NpgsqlOperationStorageTests
 
                 args                text                     not null,
 
-                is_finished         bool                     not null,
+                state               integer                  not null,
                 result              text,
+                fail_reason         text,
+                waiting_until       timestamptz,
+                retrying_at         timestamptz,
+                retry_count         integer,
 
                 inter_results       jsonb                    not null,
-                -- { 
-                --     "discriminator1": "serializedValue",
-                --     "discriminator2": {
-                --         "key1": "serializedValue",
-                --         "key1": "serializedValue"
-                --     }
-                -- }
 
                 primary key (discriminator, id)
             );
@@ -474,7 +471,7 @@ public sealed class NpgsqlOperationStorageTests
     }
 
     [Test]
-    public async Task AddResult_OperationExists_Adds()
+    public async Task AddState_NewStateIsFinishedAndOperationIsInStateCreated_Sets()
     {
         // Arrange
         var operation = TestOperationDefinition.Instance.NewOperation(
@@ -486,9 +483,10 @@ public sealed class NpgsqlOperationStorageTests
         await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
 
         var result = new TestOperationResult(Guid.NewGuid().ToString());
+        var newState = new OperationState<TestOperationResult>.Finished(result);
 
         // Act
-        await _storage.AddResult(TestOperationDefinition.Instance, operation.Id, result);
+        await _storage.SetState(TestOperationDefinition.Instance, operation.Id, newState);
 
         // Assert
         var operationFromStorage = await _storage.GetByIdOrDefault(
@@ -503,22 +501,23 @@ public sealed class NpgsqlOperationStorageTests
     }
 
     [Test]
-    public async Task AddResult_OperationDoesntExist_Throws()
+    public async Task SetState_OperationDoesntExist_Throws()
     {
         // Arrange
         var operationId = OperationId.NewGuid();
         var result = new TestOperationResult(Guid.NewGuid().ToString());
+        var newState = new OperationState<TestOperationResult>.Finished(result);
 
         // Act
         var action = () =>
-            _storage.AddResult(TestOperationDefinition.Instance, operationId, result);
+            _storage.SetState(TestOperationDefinition.Instance, operationId, newState);
 
         // Assert
         await action.ShouldThrowAsync<InvalidOperationException>();
     }
 
     [Test]
-    public async Task AddResult_Idempotent()
+    public async Task SetState_Idempotent()
     {
         // Arrange
         var operation = TestOperationDefinition.Instance.NewOperation(
@@ -530,10 +529,11 @@ public sealed class NpgsqlOperationStorageTests
         await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
 
         var result = new TestOperationResult(Guid.NewGuid().ToString());
+        var newState = new OperationState<TestOperationResult>.Finished(result);
 
         // Act
-        await _storage.AddResult(TestOperationDefinition.Instance, operation.Id, result);
-        await _storage.AddResult(TestOperationDefinition.Instance, operation.Id, result);
+        await _storage.SetState(TestOperationDefinition.Instance, operation.Id, newState);
+        await _storage.SetState(TestOperationDefinition.Instance, operation.Id, newState);
 
         // Assert
         var operationFromStorage = await _storage.GetByIdOrDefault(
@@ -548,7 +548,7 @@ public sealed class NpgsqlOperationStorageTests
     }
 
     [Test]
-    public async Task AddResult_OperationHasOtherResult_Throws()
+    public async Task SetState_NewStateIsFinishedAndOperationHasOtherResult_Throws()
     {
         // Arrange
         var operation = TestOperationDefinition.Instance.NewOperation(
@@ -560,14 +560,16 @@ public sealed class NpgsqlOperationStorageTests
         await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
 
         var result1 = new TestOperationResult(Guid.NewGuid().ToString());
+        var state1 = new OperationState<TestOperationResult>.Finished(result1);
 
-        await _storage.AddResult(TestOperationDefinition.Instance, operation.Id, result1);
+        await _storage.SetState(TestOperationDefinition.Instance, operation.Id, state1);
 
         var result2 = new TestOperationResult(Guid.NewGuid().ToString());
+        var state2 = new OperationState<TestOperationResult>.Finished(result2);
 
         // Act
         var action = () =>
-            _storage.AddResult(TestOperationDefinition.Instance, operation.Id, result2);
+            _storage.SetState(TestOperationDefinition.Instance, operation.Id, state2);
 
         // Assert
         await action.ShouldThrowAsync<InvalidOperationException>();

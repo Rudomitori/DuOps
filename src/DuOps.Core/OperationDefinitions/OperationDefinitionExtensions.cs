@@ -18,7 +18,7 @@ public static class OperationDefinitionExtensions
             PollingScheduleId: null,
             createdAt,
             args,
-            OperationState<TResult>.Yielded.Instance,
+            OperationState<TResult>.Created.Instance,
             []
         );
     }
@@ -114,11 +114,20 @@ public static class OperationDefinitionExtensions
     {
         return state switch
         {
-            OperationState<TResult>.Yielded => SerializedOperationState.Yielded.Instance,
-            OperationState<TResult>.Finished { Result: var result } =>
-                new SerializedOperationState.Finished(
-                    operationDefinition.SerializeResultAndWrapException(result)
-                ),
+            OperationState<TResult>.Created => SerializedOperationState.Created.Instance,
+            OperationState<TResult>.Waiting waiting => new SerializedOperationState.Waiting(
+                waiting.Until
+            ),
+            OperationState<TResult>.Retrying retrying => new SerializedOperationState.Retrying(
+                retrying.At,
+                retrying.RetryCount
+            ),
+            OperationState<TResult>.Finished finished => new SerializedOperationState.Finished(
+                operationDefinition.SerializeResultAndWrapException(finished.Result)
+            ),
+            OperationState<TResult>.Failed failed => new SerializedOperationState.Failed(
+                failed.Reason
+            ),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(state),
                 state,
@@ -134,11 +143,20 @@ public static class OperationDefinitionExtensions
     {
         return state switch
         {
-            SerializedOperationState.Yielded => OperationState<TResult>.Yielded.Instance,
-            SerializedOperationState.Finished { Result: var result } =>
-                new OperationState<TResult>.Finished(
-                    operationDefinition.DeserializeResultAndWrapException(result)
-                ),
+            SerializedOperationState.Created => OperationState<TResult>.Created.Instance,
+            SerializedOperationState.Waiting waiting => new OperationState<TResult>.Waiting(
+                waiting.Until
+            ),
+            SerializedOperationState.Retrying retrying => new OperationState<TResult>.Retrying(
+                retrying.At,
+                retrying.RetryCount
+            ),
+            SerializedOperationState.Finished finished => new OperationState<TResult>.Finished(
+                operationDefinition.DeserializeResultAndWrapException(finished.Result)
+            ),
+            SerializedOperationState.Failed failed => new OperationState<TResult>.Failed(
+                failed.Reason
+            ),
             _ => throw new ArgumentOutOfRangeException(
                 nameof(state),
                 state,

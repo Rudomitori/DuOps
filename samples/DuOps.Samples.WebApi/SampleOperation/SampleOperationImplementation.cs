@@ -27,8 +27,19 @@ public sealed class SampleOperationImplementation
                     return DateTime.UtcNow;
                 }
 
-                await context.Yield("WaitExternalLongProcess");
+                await context.Wait("WaitExternalLongProcess", TimeSpan.FromSeconds(1));
                 return default;
+            }
+        );
+
+        await context.RunWithCache(
+            new("RandomException"),
+            () =>
+            {
+                var shouldThrow = Random.Shared.Next() % 3 == 0;
+                return shouldThrow
+                    ? Task.FromException(new Exception("Random exception"))
+                    : Task.CompletedTask;
             }
         );
 

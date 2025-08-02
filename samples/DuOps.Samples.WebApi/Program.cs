@@ -78,7 +78,7 @@ app.MapPost(
     {
         var operationState = await poller.PollOperation(
             SampleOperationDefinition.Instance,
-            new OperationId(null, id)
+            new OperationId(id)
         );
         return operationState;
     }

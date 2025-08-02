@@ -115,13 +115,14 @@ internal sealed class InMemoryBackgroundOperationPollScheduler(
     {
         var attemptsInterval = TimeSpan.FromMilliseconds(10);
 
-        var operation = await operationStorage.AwaitOperationAndGetByIdOrDefault(
-            discriminator,
-            operationId,
-            attemptsInterval,
-            attemptsInterval * 10,
-            cancellationToken
-        );
+        var operation =
+            await operationStorage.AwaitOperationHasPollingScheduleIdAndGetByIdOrDefault(
+                discriminator,
+                operationId,
+                attemptsInterval,
+                attemptsInterval * 10,
+                cancellationToken
+            );
 
         return operation
             ?? throw new InvalidOperationException(

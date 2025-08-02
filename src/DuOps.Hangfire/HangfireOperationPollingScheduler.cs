@@ -70,11 +70,18 @@ internal sealed class HangfireOperationPollingScheduler(
             return;
         }
 
-        var result = await operationPoller.PollOperation(operation, cancellationToken);
+        var newOperationState = await operationPoller.PollOperation(operation, cancellationToken);
 
-        if (result is SerializedOperationState.Yielded)
+        switch (newOperationState)
         {
-            performContext.SetOperationYielded();
+            // TODO: Handle state yielded
+
+            case SerializedOperationState.Waiting waiting:
+                performContext.SetOperationSchedule(waiting.Until);
+                break;
+            case SerializedOperationState.Retrying retrying:
+                performContext.SetOperationSchedule(retrying.At);
+                break;
         }
     }
 
@@ -87,13 +94,14 @@ internal sealed class HangfireOperationPollingScheduler(
     {
         var attemptsInterval = TimeSpan.FromMilliseconds(10);
 
-        var operation = await operationStorage.AwaitOperationAndGetByIdOrDefault(
-            discriminator,
-            operationId,
-            attemptsInterval,
-            attemptsInterval * 10,
-            cancellationToken
-        );
+        var operation =
+            await operationStorage.AwaitOperationHasPollingScheduleIdAndGetByIdOrDefault(
+                discriminator,
+                operationId,
+                attemptsInterval,
+                attemptsInterval * 10,
+                cancellationToken
+            );
 
         return operation
             ?? throw new InvalidOperationException(
@@ -105,9 +113,12 @@ internal sealed class HangfireOperationPollingScheduler(
     {
         public void OnStateElection(ElectStateContext context)
         {
-            if (context.CandidateState is SucceededState && context.GetOperationYielded())
+            if (
+                context.CandidateState is SucceededState
+                && context.GetOperationSchedule() is { } newSchedule
+            )
             {
-                context.CandidateState = new ScheduledState(TimeSpan.FromMilliseconds(100));
+                context.CandidateState = new ScheduledState(newSchedule.UtcDateTime);
             }
         }
     }
@@ -115,17 +126,17 @@ internal sealed class HangfireOperationPollingScheduler(
 
 internal static class HangfireContextExtensions
 {
-    private const string OperationYieldedCustomDataKey = "DuOps.OperationYielded";
-    private const string OperationYieldedCustomDataValue = "true";
+    private const string OperationScheduleCustomDataKey = "DuOps.OperationSchedule";
 
-    internal static void SetOperationYielded(this PerformContext context)
+    internal static void SetOperationSchedule(this PerformContext context, DateTimeOffset at)
     {
-        context.Items[OperationYieldedCustomDataKey] = OperationYieldedCustomDataValue;
+        context.Items[OperationScheduleCustomDataKey] = at;
     }
 
-    internal static bool GetOperationYielded(this ElectStateContext context)
+    internal static DateTimeOffset? GetOperationSchedule(this ElectStateContext context)
     {
-        return context.CustomData.TryGetValue(OperationYieldedCustomDataKey, out var value)
-            && value is OperationYieldedCustomDataValue;
+        return context.CustomData.TryGetValue(OperationScheduleCustomDataKey, out var value)
+            ? (DateTimeOffset?)value
+            : null;
     }
 }

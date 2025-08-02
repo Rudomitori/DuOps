@@ -1,4 +1,6 @@
-﻿namespace DuOps.Core.OperationDefinitions;
+﻿using DuOps.Core.OperationDefinitions.RetryPolicies;
+
+namespace DuOps.Core.OperationDefinitions;
 
 public interface IOperationDefinition<TArgs, TResult> : IOperationDefinition
 {
@@ -14,4 +16,6 @@ public interface IOperationDefinition<TArgs, TResult> : IOperationDefinition
 public interface IOperationDefinition
 {
     OperationDiscriminator Discriminator { get; }
+
+    IOperationRetryPolicy RetryPolicy { get; }
 }

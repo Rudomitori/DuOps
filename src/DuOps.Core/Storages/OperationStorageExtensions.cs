@@ -35,24 +35,24 @@ public static class OperationStorageExtensions
         return operationDefinition.Deserialize(serializedOperation);
     }
 
-    public static async Task AddResult<TArgs, TResult>(
+    public static async Task SetState<TArgs, TResult>(
         this IOperationStorage storage,
         IOperationDefinition<TArgs, TResult> operationDefinition,
         OperationId operationId,
-        TResult result,
+        OperationState<TResult> state,
         CancellationToken cancellationToken = default
     )
     {
-        var serializedResult = operationDefinition.SerializeResultAndWrapException(result);
-        await storage.AddResult(
+        var serializedState = operationDefinition.Serialize(state);
+        await storage.SetState(
             operationDefinition.Discriminator,
             operationId,
-            serializedResult,
+            serializedState,
             cancellationToken
         );
     }
 
-    public static async Task<SerializedOperation?> AwaitOperationAndGetByIdOrDefault(
+    public static async Task<SerializedOperation?> AwaitOperationHasPollingScheduleIdAndGetByIdOrDefault(
         this IOperationStorage storage,
         OperationDiscriminator discriminator,
         OperationId operationId,
@@ -69,7 +69,10 @@ public static class OperationStorageExtensions
             cancellationToken
         );
 
-        while (operation is null && stopWatch.Elapsed + attemptsInterval < maxWaitTime)
+        while (
+            operation?.PollingScheduleId is null
+            && stopWatch.Elapsed + attemptsInterval < maxWaitTime
+        )
         {
             await Task.Delay(attemptsInterval, cancellationToken);
             operation = await storage.GetByIdOrDefault(

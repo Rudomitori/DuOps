@@ -23,18 +23,7 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
         var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
-            new CommandDefinition(
-                $"""
-                SELECT
-                {DtoFields}
-                FROM duops_operations
-                where
-                    discriminator = @discriminator
-                    and id = @id
-                """,
-                new { discriminator = discriminator.Value, id = operationId.Value },
-                cancellationToken: cancellationToken
-            )
+            NpgsqlOperationStorageQueries.GetById(discriminator, operationId, cancellationToken)
         );
 
         return dto is null ? null : MapToSerializedOperation(dto);
@@ -48,35 +37,10 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
         var affectedRows = await connection.ExecuteAsync(
-            new CommandDefinition(
-                $"""
-                INSERT INTO duops_operations (
-                    discriminator, 
-                    id,
-                    polling_schedule_id,
-                    started_at,
-                    args,
-                    is_finished,
-                    result,
-                    inter_results
-                )
-                VALUES (
-                    @Discriminator, 
-                    @Id,
-                    @PollingScheduleId,
-                    @StartedAt,
-                    @Args::jsonb,
-                    @IsFinished,
-                    @Result::jsonb,
-                    @InterResults::jsonb
-                )
-                ON CONFLICT DO NOTHING
-                """,
-                MapToDto(serializedOperation),
-                cancellationToken: cancellationToken
-            )
+            NpgsqlOperationStorageQueries.GetOrAdd(MapToDto(serializedOperation), cancellationToken)
         );
 
+        // TODO: Avoid null on race condition
         return affectedRows == 1
             ? serializedOperation
             : await GetByIdOrDefault(
@@ -98,6 +62,45 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
             : AddKeyedInterResult(operationDiscriminator, operationId, result, cancellationToken);
     }
 
+    public async Task SetState(
+        OperationDiscriminator operationDiscriminator,
+        OperationId operationId,
+        SerializedOperationState state,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+
+        var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
+            NpgsqlOperationStorageQueries.SetState(
+                operationDiscriminator,
+                operationId,
+                state,
+                cancellationToken
+            )
+        );
+
+        CheckOperationIsFound(operationDiscriminator, operationId, dto);
+        var stateFromDb = MapToSerializedOperationState(dto);
+
+        var stateIsSet = (state, stateFromDb) switch
+        {
+            (SerializedOperationState.Yielded, SerializedOperationState.Yielded) => true,
+            (SerializedOperationState.Waiting w1, SerializedOperationState.Waiting w2) =>
+                w1.Until.Millisecond == w2.Until.Millisecond,
+            (SerializedOperationState.Retrying r1, SerializedOperationState.Retrying r2) =>
+                r1.At.Millisecond == r2.At.Millisecond && r1.RetryCount == r2.RetryCount,
+            _ => state == stateFromDb,
+        };
+
+        if (stateIsSet)
+            return;
+
+        // TODO: Separate different cases
+        // TODO: Use custom exception
+        throw new InvalidOperationException("Failed to set operation state");
+    }
+
     private async Task AddNotKeyedInterResult(
         OperationDiscriminator operationDiscriminator,
         OperationId operationId,
@@ -110,36 +113,18 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
         var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
-            new CommandDefinition(
-                $"""
-                UPDATE duops_operations
-                SET inter_results = CASE
-                        WHEN inter_results[@result_discriminator] IS NULL 
-                            THEN jsonb_set(
-                                inter_results,
-                                array[@result_discriminator],
-                                to_jsonb(@value)
-                            )
-                        ELSE inter_results
-                    END 
-                WHERE discriminator = @discriminator AND id = @id
-                RETURNING {DtoFields}
-                """,
-                new
-                {
-                    discriminator = operationDiscriminator.Value,
-                    id = operationId.Value,
-                    result_discriminator = result.Discriminator.Value,
-                    value = result.Value.Value,
-                },
-                cancellationToken: cancellationToken
+            NpgsqlOperationStorageQueries.AddNotKeyedInterResult(
+                operationDiscriminator,
+                operationId,
+                result,
+                cancellationToken
             )
         );
 
         #region Post condition checks
 
         CheckOperationIsFound(operationDiscriminator, operationId, dto);
-        CheckOperationIsNotFinishedYet(operationDiscriminator, operationId, dto);
+        CheckOperationStateIsNotFinal(operationDiscriminator, operationId, dto);
 
         using var jsonDocument = JsonDocument.Parse(dto.InterResults);
 
@@ -171,126 +156,61 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
     private async Task AddKeyedInterResult(
         OperationDiscriminator operationDiscriminator,
         OperationId operationId,
-        SerializedInterResult result,
+        SerializedInterResult interResult,
         CancellationToken cancellationToken
     )
     {
-        Debug.Assert(result.Key is not null);
+        Debug.Assert(interResult.Key is not null);
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
         var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
-            new CommandDefinition(
-                $"""
-                UPDATE duops_operations
-                SET inter_results = CASE
-                        WHEN is_finished THEN inter_results
-                        WHEN inter_results[@result_discriminator][@key] IS NOT NULL 
-                            THEN inter_results
-                        WHEN jsonb_typeof(inter_results[@result_discriminator]) = 'object' 
-                            THEN jsonb_set(
-                                inter_results,
-                                array[@result_discriminator, @key],
-                                to_jsonb(@value)
-                            )
-                        WHEN inter_results[@result_discriminator] IS NULL 
-                            THEN jsonb_set(
-                                inter_results,
-                                array[@result_discriminator],
-                                jsonb_build_object(@key, to_jsonb(@value))
-                            )
-                        ELSE inter_results 
-                    END 
-                WHERE discriminator = @discriminator AND id = @id
-                RETURNING {DtoFields}
-                """,
-                new
-                {
-                    discriminator = operationDiscriminator.Value,
-                    id = operationId.Value,
-                    result_discriminator = result.Discriminator.Value,
-                    key = result.Key.Value.Value,
-                    value = result.Value.Value,
-                },
-                cancellationToken: cancellationToken
+            NpgsqlOperationStorageQueries.AddKeyedInterResult(
+                operationDiscriminator,
+                operationId,
+                interResult,
+                cancellationToken
             )
         );
 
         #region Post condition checks
 
         CheckOperationIsFound(operationDiscriminator, operationId, dto);
-        CheckOperationIsNotFinishedYet(operationDiscriminator, operationId, dto);
+        CheckOperationStateIsNotFinal(operationDiscriminator, operationId, dto);
 
         using var jsonDocument = JsonDocument.Parse(dto.InterResults);
 
         CheckInterResultsRootElementIsObject(operationDiscriminator, operationId, jsonDocument);
 
-        var property = jsonDocument.RootElement.GetProperty(result.Discriminator.Value);
+        var property = jsonDocument.RootElement.GetProperty(interResult.Discriminator.Value);
 
         if (property.ValueKind is JsonValueKind.String)
             throw new InvalidOperationException(
-                $"Can not add result {result.Discriminator} with key {result.Key} for {operationDiscriminator}({operationId})"
-                    + $" because non keyed result {result.Discriminator} already exists"
+                $"Can not add result {interResult.Discriminator} with key {interResult.Key} for {operationDiscriminator}({operationId})"
+                    + $" because non keyed result {interResult.Discriminator} already exists"
             );
 
         if (property.ValueKind is not JsonValueKind.Object)
             throw new InvalidOperationException(
-                $"{operationDiscriminator}({operationId}).Results[{result.Discriminator}]"
+                $"{operationDiscriminator}({operationId}).Results[{interResult.Discriminator}]"
                     + $" has unexpected json value kind {property.ValueKind}"
             );
 
-        var innerProperty = property.GetProperty(result.Key.Value.Value);
+        var innerProperty = property.GetProperty(interResult.Key.Value.Value);
 
         if (innerProperty.ValueKind != JsonValueKind.String)
             throw new InvalidOperationException(
-                $"{operationDiscriminator}({operationId}).Results[{result.Discriminator}][{result.Key}]"
+                $"{operationDiscriminator}({operationId}).Results[{interResult.Discriminator}][{interResult.Key}]"
                     + $" has unexpected json value kind {property.ValueKind}"
             );
 
-        if (innerProperty.GetString() != result.Value)
+        if (innerProperty.GetString() != interResult.Value)
             throw new InvalidOperationException(
-                $"Can not add result {result.Discriminator} with key {result.Key} for {operationDiscriminator}({operationId})"
-                    + $" because result {result.Discriminator} already exists"
+                $"Can not add result {interResult.Discriminator} with key {interResult.Key} for {operationDiscriminator}({operationId})"
+                    + $" because result {interResult.Discriminator} already exists"
             );
 
         #endregion
-    }
-
-    public async Task AddResult(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
-        SerializedOperationResult serializedOperationResult,
-        CancellationToken cancellationToken = default
-    )
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-
-        var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
-            new CommandDefinition(
-                $"""
-                UPDATE duops_operations
-                SET is_finished = TRUE,
-                    result = coalesce(result, @result)
-                WHERE discriminator = @discriminator AND id = @id
-                RETURNING
-                {DtoFields}
-                """,
-                new
-                {
-                    discriminator = discriminator.Value,
-                    id = operationId.Value,
-                    result = serializedOperationResult.Value,
-                },
-                cancellationToken: cancellationToken
-            )
-        );
-
-        CheckOperationIsFound(discriminator, operationId, dto);
-
-        if (dto.Result != serializedOperationResult.Value)
-            throw new InvalidOperationException(
-                $"{discriminator}({operationId}) already has another result"
-            );
     }
 
     public async Task<OperationPollingScheduleId> GetOrSetPollingScheduleId(
@@ -303,29 +223,16 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
         var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
-            new CommandDefinition(
-                $"""
-                UPDATE duops_operations
-                SET polling_schedule_id = CASE
-                        WHEN is_finished THEN polling_schedule_id
-                        ELSE coalesce(polling_schedule_id, @polling_schedule_id)
-                    END
-                WHERE discriminator = @discriminator AND id = @id
-                RETURNING
-                {DtoFields}
-                """,
-                new
-                {
-                    discriminator = discriminator.Value,
-                    id = operationId.Value,
-                    polling_schedule_id = scheduleId.Value,
-                },
-                cancellationToken: cancellationToken
+            NpgsqlOperationStorageQueries.GetOrSetPollingScheduleId(
+                discriminator,
+                operationId,
+                scheduleId,
+                cancellationToken
             )
         );
 
         CheckOperationIsFound(discriminator, operationId, dto);
-        CheckOperationIsNotFinishedYet(discriminator, operationId, dto);
+        CheckOperationStateIsNotFinal(discriminator, operationId, dto);
 
         return new OperationPollingScheduleId(dto.PollingScheduleId!);
     }
@@ -339,22 +246,12 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
         await connection.ExecuteAsync(
-            new CommandDefinition(
-                """
-                DELETE FROM duops_operations
-                WHERE discriminator = @discriminator AND id = @id
-                """,
-                new { discriminator = discriminator.Value, id = operationId.Value },
-                cancellationToken: cancellationToken
-            )
+            NpgsqlOperationStorageQueries.Delete(discriminator, operationId, cancellationToken)
         );
     }
 
     private SerializedOperation MapToSerializedOperation(OperationDto dto)
     {
-        if (!dto.IsFinished)
-            Debug.Assert(dto.Result is null);
-
         return new SerializedOperation(
             new OperationDiscriminator(dto.Discriminator),
             new OperationId(dto.Id),
@@ -363,26 +260,81 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
                 : new OperationPollingScheduleId(dto.PollingScheduleId),
             dto.StartedAt,
             new SerializedOperationArgs(dto.Args),
-            dto.IsFinished
-                ? new SerializedOperationState.Finished(new SerializedOperationResult(dto.Result))
-                : SerializedOperationState.Yielded.Instance,
+            State: MapToSerializedOperationState(dto),
             DeserializeInterResults(dto.InterResults)
         );
     }
 
+    private SerializedOperationState MapToSerializedOperationState(OperationDto dto)
+    {
+        // TODO: Add custom exception messages
+        return dto.State switch
+        {
+            OperationStateDto.Created => new SerializedOperationState.Created(),
+            OperationStateDto.Waiting => new SerializedOperationState.Waiting(
+                dto.WaitingUntil ?? throw new NullReferenceException()
+            ),
+            OperationStateDto.Retrying => new SerializedOperationState.Retrying(
+                dto.RetryingAt ?? throw new NullReferenceException(),
+                dto.RetryCount ?? throw new NullReferenceException()
+            ),
+            OperationStateDto.Finished => new SerializedOperationState.Finished(
+                new SerializedOperationResult(dto.Result ?? throw new NullReferenceException())
+            ),
+            OperationStateDto.Failed => new SerializedOperationState.Failed(
+                dto.FailReason ?? throw new NullReferenceException()
+            ),
+            _ => throw new ArgumentOutOfRangeException(),
+        };
+    }
+
     private static OperationDto MapToDto(SerializedOperation operation)
     {
-        var finishedState = operation.State as SerializedOperationState.Finished;
-
         return new OperationDto(
             operation.Discriminator.Value,
             operation.Id.Value,
             operation.PollingScheduleId?.Value,
             operation.StartedAt,
             operation.Args.Value,
-            IsFinished: finishedState is not null,
-            Result: finishedState?.Result.Value,
-            SerializedInterResults(operation.InterResults)
+            State: operation.State switch
+            {
+                SerializedOperationState.Created => OperationStateDto.Created,
+                SerializedOperationState.Failed => OperationStateDto.Failed,
+                SerializedOperationState.Finished => OperationStateDto.Finished,
+                SerializedOperationState.Retrying => OperationStateDto.Retrying,
+                SerializedOperationState.Waiting => OperationStateDto.Waiting,
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(operation.State),
+                    operation.State,
+                    "Unknown operation state"
+                ),
+            },
+            Result: operation.State switch
+            {
+                SerializedOperationState.Finished finished => finished.Result.Value,
+                _ => null,
+            },
+            WaitingUntil: operation.State switch
+            {
+                SerializedOperationState.Waiting waiting => waiting.Until.UtcDateTime,
+                _ => null,
+            },
+            RetryingAt: operation.State switch
+            {
+                SerializedOperationState.Retrying retrying => retrying.At.UtcDateTime,
+                _ => null,
+            },
+            RetryCount: operation.State switch
+            {
+                SerializedOperationState.Retrying retrying => retrying.RetryCount,
+                _ => null,
+            },
+            FailReason: operation.State switch
+            {
+                SerializedOperationState.Failed failed => failed.Reason,
+                _ => null,
+            },
+            InterResults: SerializedInterResults(operation.InterResults)
         );
     }
 
@@ -468,17 +420,6 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
         return interResults;
     }
 
-    private const string DtoFields = """
-            discriminator as "Discriminator",
-            id as "Id",
-            polling_schedule_id as "PollingScheduleId",
-            started_at as "StartedAt",
-            args as "Args",
-            is_finished as "IsFinished",
-            result as "Result",
-            inter_results as "InterResults"
-        """;
-
     #region Common checks
 
     private void CheckInterResultsRootElementIsObject(
@@ -504,15 +445,15 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
             throw new InvalidOperationException($"{discriminator}({operationId}) was not found");
     }
 
-    private void CheckOperationIsNotFinishedYet(
+    private void CheckOperationStateIsNotFinal(
         OperationDiscriminator discriminator,
         OperationId operationId,
         OperationDto dto
     )
     {
-        if (dto.IsFinished)
+        if (dto.State is OperationStateDto.Finished or OperationStateDto.Failed)
             throw new InvalidOperationException(
-                $"{discriminator}({operationId}) is already finished"
+                $"{discriminator}({operationId}).State = {dto.State}"
             );
     }
 

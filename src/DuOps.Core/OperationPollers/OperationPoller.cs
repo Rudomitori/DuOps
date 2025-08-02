@@ -40,18 +40,18 @@ internal sealed class OperationPoller(
         CancellationToken yieldToken = default
     )
     {
-        if (serializedOperation.State is SerializedOperationState.Finished finished)
+        return serializedOperation.State switch
         {
-            return finished;
-        }
-
-        return await registry.InvokeCallbackWithDefinition<
-            TypedPollOperationCallbackProxy,
-            SerializedOperationState
-        >(
-            serializedOperation.Discriminator,
-            new TypedPollOperationCallbackProxy(this, serializedOperation, yieldToken)
-        );
+            SerializedOperationState.Finished or SerializedOperationState.Failed =>
+                serializedOperation.State,
+            _ => await registry.InvokeCallbackWithDefinition<
+                TypedPollOperationCallbackProxy,
+                SerializedOperationState
+            >(
+                serializedOperation.Discriminator,
+                new TypedPollOperationCallbackProxy(this, serializedOperation, yieldToken)
+            ),
+        };
     }
 
     private readonly struct TypedPollOperationCallbackProxy(
@@ -99,9 +99,13 @@ internal sealed class OperationPoller(
     {
         var operationId = serializedOperation.Id;
 
-        if (serializedOperation.State is SerializedOperationState.Finished finished)
+        if (
+            serializedOperation.State
+            is SerializedOperationState.Finished
+                or SerializedOperationState.Failed
+        )
         {
-            return operationDefinition.Deserialize(finished);
+            return operationDefinition.Deserialize(serializedOperation.State);
         }
 
         var operationImplementation = serviceProvider.GetRequiredService<
@@ -120,55 +124,77 @@ internal sealed class OperationPoller(
             yieldToken
         );
 
-        SerializedOperationResult serializedResult;
-        TResult result;
+        OperationState<TResult> newState;
         try
         {
             var args = operationDefinition.DeserializeArgsAndWrapException(
                 serializedOperation.Args
             );
 
-            result = await operationImplementation.Execute(args, context);
+            var result = await operationImplementation.Execute(args, context);
 
-            serializedResult = operationDefinition.SerializeResultAndWrapException(result);
+            var serializedResult = operationDefinition.SerializeResultAndWrapException(result);
             result = operationDefinition.DeserializeResultAndWrapException(serializedResult);
+
+            newState = new OperationState<TResult>.Finished(result);
+
+            telemetry.OnOperationFinished(operationDefinition, operationId, serializedResult);
         }
+        // TODO: Handle AggregateException
         catch (OperationCanceledException) when (yieldToken.IsCancellationRequested)
         {
-            telemetry.OnOperationYielded(
-                operationDefinition,
-                operationId,
-                "YieldedToken",
-                "Yielded via yield token"
-            );
-            return OperationState<TResult>.Yielded.Instance;
+            telemetry.OnOperationYielded(operationDefinition, operationId);
+            newState = OperationState<TResult>.Yielded.Instance;
         }
-        catch (YieldException e)
+        catch (WaitException e)
         {
-            telemetry.OnOperationYielded(
-                operationDefinition,
-                operationId,
-                e.Reason,
-                e.ReasonDetails
-            );
-            return OperationState<TResult>.Yielded.Instance;
+            var waitingUntil = e switch
+            {
+                // TODO: Use TimeProvider to get now
+                { Duration: { } duration } => DateTimeOffset.UtcNow + duration,
+                { Until: { } until } => until,
+                _ => throw new Exception("Unexpected waiting state", e),
+            };
+
+            telemetry.OnOperationWaiting(operationDefinition, operationId, waitingUntil, e.Reason);
+
+            newState = new OperationState<TResult>.Waiting(waitingUntil);
         }
         catch (Exception e)
         {
-            telemetry.OnOperationThrewException(operationDefinition, operationId, e);
-            throw;
+            var retryCount = serializedOperation.State is SerializedOperationState.Retrying retrying
+                ? retrying.RetryCount
+                : 0;
+
+            if (operationDefinition.RetryPolicy.ShouldRetry(e, retryCount))
+            {
+                var retryDelay = operationDefinition.RetryPolicy.RetryDelay(e, retryCount);
+                var retryingAt = DateTimeOffset.UtcNow + retryDelay;
+
+                newState = new OperationState<TResult>.Retrying(retryingAt, retryCount + 1);
+
+                telemetry.OnOperationThrewException(
+                    operationDefinition,
+                    operationId,
+                    e,
+                    retryingAt
+                );
+            }
+            else
+            {
+                newState = new OperationState<TResult>.Failed(e.Message);
+                telemetry.OnOperationFailed(operationDefinition, operationId, e);
+            }
         }
 
-        telemetry.OnOperationFinished(operationDefinition, operationId, serializedResult);
-
-        await storage.AddResult(
+        await storage.SetState(
             operationDefinition.Discriminator,
             operationId,
-            serializedResult,
+            operationDefinition.Serialize(newState),
             CancellationToken.None
         );
 
-        return new OperationState<TResult>.Finished(result);
+        return newState;
     }
 
     private sealed class OperationExecutionContext(
@@ -303,7 +329,7 @@ internal sealed class OperationPoller(
             {
                 throw;
             }
-            catch (YieldException)
+            catch (WaitException)
             {
                 throw;
             }
@@ -369,7 +395,7 @@ internal sealed class OperationPoller(
             {
                 throw;
             }
-            catch (YieldException)
+            catch (WaitException)
             {
                 throw;
             }
@@ -405,9 +431,14 @@ internal sealed class OperationPoller(
             return value;
         }
 
-        public Task Yield(string reason, string? reasonDetails = null)
+        public Task Wait(string reason, TimeSpan duration)
         {
-            return Task.FromException(new YieldException(reason, reasonDetails));
+            return Task.FromException(new WaitException(reason, duration));
+        }
+
+        public Task Wait(string reason, DateTimeOffset until)
+        {
+            return Task.FromException(new WaitException(reason, until));
         }
 
         #endregion

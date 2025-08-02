@@ -6,7 +6,11 @@ internal sealed record OperationDto(
     string? PollingScheduleId,
     DateTime StartedAt,
     string Args,
-    bool IsFinished,
+    OperationStateDto State,
     string? Result,
+    DateTime? WaitingUntil,
+    DateTime? RetryingAt,
+    int? RetryCount,
+    string? FailReason,
     string InterResults
 );

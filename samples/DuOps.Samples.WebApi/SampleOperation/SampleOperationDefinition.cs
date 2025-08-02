@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DuOps.Core.OperationDefinitions;
+using DuOps.Core.OperationDefinitions.RetryPolicies;
 
 namespace DuOps.Samples.WebApi.SampleOperation;
 
@@ -9,6 +10,13 @@ public sealed class SampleOperationDefinition
     public static readonly SampleOperationDefinition Instance = new();
 
     public OperationDiscriminator Discriminator => new("Sample");
+
+    public IOperationRetryPolicy RetryPolicy { get; } =
+        new AdHocOperationRetryingPolicy(
+            shouldRetry: (_, _) => true,
+            retryDelay: (_, retryCount) =>
+                TimeSpan.FromSeconds(retryCount / 2.0 + Random.Shared.NextDouble())
+        );
 
     private static readonly JsonSerializerOptions JsonSerializerOptions = new()
     {
