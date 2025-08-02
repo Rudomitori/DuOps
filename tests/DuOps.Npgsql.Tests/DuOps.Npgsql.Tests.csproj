@@ -19,6 +19,7 @@
     <Using Include="NUnit.Framework" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\DuOps.Npgsql.Migrations\DuOps.Npgsql.Migrations.csproj" />
     <ProjectReference Include="..\..\src\DuOps.Npgsql\DuOps.Npgsql.csproj" />
     <ProjectReference Include="..\DuOps.Core.Tests\DuOps.Core.Tests.csproj" />
   </ItemGroup>

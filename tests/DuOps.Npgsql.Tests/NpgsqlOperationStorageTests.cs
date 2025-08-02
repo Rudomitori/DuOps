@@ -7,6 +7,7 @@ using DuOps.Core.Tests.TestOperation;
 using DuOps.Core.Tests.TestOperation.InterResults.First;
 using DuOps.Core.Tests.TestOperation.InterResults.Second;
 using DuOps.Core.Tests.TestOperation.InterResults.Third;
+using DuOps.Npgsql.Migrations;
 using Npgsql;
 using Shouldly;
 using Testcontainers.PostgreSql;
@@ -31,31 +32,8 @@ public sealed class NpgsqlOperationStorageTests
 
         await using var connection = await _dataSource.OpenConnectionAsync();
 
-        await connection.ExecuteAsync(
-            """
-            create table if not exists duops_operations
-            (
-                discriminator       text                     not null,
-                id                  text                     not null,
-
-                polling_schedule_id text,
-                started_at          timestamp with time zone not null,
-
-                args                text                     not null,
-
-                state               integer                  not null,
-                result              text,
-                fail_reason         text,
-                waiting_until       timestamptz,
-                retrying_at         timestamptz,
-                retry_count         integer,
-
-                inter_results       jsonb                    not null,
-
-                primary key (discriminator, id)
-            );
-            """
-        );
+        foreach (var migration in NpgsqlOperationStorageMigrations.GetMigrations())
+            await connection.ExecuteAsync(migration);
 
         _storage = new NpgsqlOperationStorage(_dataSource);
     }
