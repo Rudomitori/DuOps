@@ -1,4 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>DuOps.Npgsql.Migrations</PackageId>
+  </PropertyGroup>
   <ItemGroup>
     <None Remove="Migrations\001_Init.sql" />
     <EmbeddedResource Include="Migrations\001_Init.sql" />

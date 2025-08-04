@@ -1,9 +1,13 @@
 <Project>
   <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
-    <ParentDirectoryBuildPropsPath>$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)..\'))</ParentDirectoryBuildPropsPath>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <DebugType>Embedded</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <EmbedAllSources>true</EmbedAllSources>
   </PropertyGroup>
-  <ImportGroup>
-    <Import Project="$(ParentDirectoryBuildPropsPath)" />
-  </ImportGroup>
 </Project>

@@ -8,6 +8,7 @@
   </PropertyGroup>
   <PropertyGroup>
     <Authors>Dmitry Zhavoronkov</Authors>
+    <Version>0.1.0</Version>
     <RepositoryUrl>https://github.com/Rudomitori/DuOps</RepositoryUrl>
     <PackageProjectUrl>https://github.com/Rudomitori/DuOps</PackageProjectUrl>
     <IncludeSymbols>true</IncludeSymbols>

@@ -1,4 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>DuOps.Npgsql.Testing</PackageId>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\DuOps.Core\DuOps.Core.csproj" />
   </ItemGroup>
