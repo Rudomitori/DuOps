@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS duops_operations
     type          text          NOT NULL,
     id            text          NOT NULL,
 
-    queue         text          NOT NULL,
+    queue_id      text          NOT NULL,
     scheduled_at  timestamptz,
     locked_until  timestamptz,
     args          text          NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS duops_operations
 );
 
 CREATE INDEX IF NOT EXISTS ix_duops_operations_queue
-    ON duops_operations (queue, coalesce(locked_until, scheduled_at))
+    ON duops_operations (queue_id, coalesce(locked_until, scheduled_at))
     -- where state = Active
     WHERE state = 10;
 

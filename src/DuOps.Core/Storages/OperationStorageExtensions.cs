@@ -31,7 +31,7 @@ public static class OperationStorageExtensions
     public static Task ScheduleOperationAsync<TId, TArgs, TResult>(
         this IOperationStorage storage,
         IOperationDefinition<TId, TArgs, TResult> operationDefinition,
-        string queue,
+        OperationQueueId queueId,
         TId operationId,
         TArgs operationArgs,
         CancellationToken cancellationToken = default
@@ -42,7 +42,7 @@ public static class OperationStorageExtensions
 
         return storage.ScheduleOperationAsync(
             operationDefinition.Type,
-            queue,
+            queueId,
             serializedOperationId,
             serializedOperationArgs,
             cancellationToken

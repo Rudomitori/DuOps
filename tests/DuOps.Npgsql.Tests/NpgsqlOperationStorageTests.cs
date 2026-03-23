@@ -1,4 +1,5 @@
 ﻿using Dapper;
+using DuOps.Core;
 using DuOps.Core.InnerResults;
 using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
@@ -65,13 +66,13 @@ public sealed class NpgsqlOperationStorageTests
     {
         // Arrange
         var expectedOperationId = Guid.CreateVersion7();
-        var expectedQueue = "any";
+        var expectedQueueId = new OperationQueueId("any");
         var expectedOperationArgs = new TestOperationArgs(10);
 
         // Act
         await _storage.ScheduleOperationAsync(
             TestOperationDefinition.Instance,
-            expectedQueue,
+            expectedQueueId,
             expectedOperationId,
             expectedOperationArgs
         );
@@ -86,7 +87,7 @@ public sealed class NpgsqlOperationStorageTests
         operation.Type.ShouldBe(TestOperationDefinition.Instance.Type);
         operation.Id.ShouldBe(expectedOperationId);
         operation.Args.ShouldBe(expectedOperationArgs);
-        operation.Queue.ShouldBe(expectedQueue);
+        operation.QueueId.ShouldBe(expectedQueueId);
         operation.State.ShouldBeOfType<OperationState<TestOperationResult>.Active>();
         operation.RetryCount.ShouldBe(0);
     }
@@ -96,19 +97,19 @@ public sealed class NpgsqlOperationStorageTests
     {
         // Arrange
         var expectedOperationId = Guid.CreateVersion7();
-        var expectedQueue = "any";
+        var expectedQueueId = new OperationQueueId("any");
         var expectedOperationArgs = new TestOperationArgs(10);
 
         await _storage.ScheduleOperationAsync(
             TestOperationDefinition.Instance,
-            expectedQueue,
+            expectedQueueId,
             expectedOperationId,
             expectedOperationArgs
         );
         // Act
         await _storage.ScheduleOperationAsync(
             TestOperationDefinition.Instance,
-            expectedQueue,
+            expectedQueueId,
             expectedOperationId,
             new TestOperationArgs(Arg1: 200)
         );
@@ -123,7 +124,7 @@ public sealed class NpgsqlOperationStorageTests
         operation.Type.ShouldBe(TestOperationDefinition.Instance.Type);
         operation.Id.ShouldBe(expectedOperationId);
         operation.Args.ShouldBe(expectedOperationArgs);
-        operation.Queue.ShouldBe(expectedQueue);
+        operation.QueueId.ShouldBe(expectedQueueId);
         operation.State.ShouldBeOfType<OperationState<TestOperationResult>.Active>();
         operation.RetryCount.ShouldBe(0);
     }
@@ -150,12 +151,12 @@ public sealed class NpgsqlOperationStorageTests
         var serializedOperationId = TestOperationDefinition.Instance.SerializeId(
             expectedOperationId
         );
-        var expectedQueue = "any";
+        var expectedQueueId = new OperationQueueId("any");
         var expectedOperationArgs = new TestOperationArgs(10);
 
         await _storage.ScheduleOperationAsync(
             TestOperationDefinition.Instance,
-            expectedQueue,
+            expectedQueueId,
             expectedOperationId,
             expectedOperationArgs
         );
@@ -204,12 +205,12 @@ public sealed class NpgsqlOperationStorageTests
         var serializedOperationId = TestOperationDefinition.Instance.SerializeId(
             expectedOperationId
         );
-        var expectedQueue = "any";
+        var expectedQueueId = new OperationQueueId("any");
         var expectedOperationArgs = new TestOperationArgs(10);
 
         await _storage.ScheduleOperationAsync(
             TestOperationDefinition.Instance,
-            expectedQueue,
+            expectedQueueId,
             expectedOperationId,
             expectedOperationArgs
         );
@@ -278,12 +279,12 @@ public sealed class NpgsqlOperationStorageTests
         var serializedOperationId = TestOperationDefinition.Instance.SerializeId(
             expectedOperationId
         );
-        var expectedQueue = "any";
+        var expectedQueueId = new OperationQueueId("any");
         var expectedOperationArgs = new TestOperationArgs(10);
 
         await _storage.ScheduleOperationAsync(
             TestOperationDefinition.Instance,
-            expectedQueue,
+            expectedQueueId,
             expectedOperationId,
             expectedOperationArgs
         );

@@ -1,4 +1,5 @@
 using Dapper;
+using DuOps.Core;
 using DuOps.Core.InnerResults;
 using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
@@ -21,7 +22,7 @@ internal static class NpgsqlOperationStorageQueries
             SELECT
                 type as "type",
                 id as "Id",
-                queue as "Queue",
+                queue_id as "QueueId",
                 scheduled_at as "ScheduledAt",
                 args as "Args",
                 created_at as "CreatedAt",
@@ -32,10 +33,10 @@ internal static class NpgsqlOperationStorageQueries
                 retry_count as "RetryCount"
             FROM duops_operations
             WHERE
-                type = @type
-                AND id = @id
+                type = @Type
+                AND id = @Id
             """,
-            new { type = type.Value, id = serializedOperationId.Value },
+            new { Type = type.Value, Id = serializedOperationId.Value },
             cancellationToken: cancellationToken
         );
     }
@@ -52,7 +53,7 @@ internal static class NpgsqlOperationStorageQueries
             INSERT INTO duops_operations (
                 type,
                 id,
-                queue,
+                queue_id,
                 scheduled_at,
                 args,
                 created_at,
@@ -62,7 +63,7 @@ internal static class NpgsqlOperationStorageQueries
             VALUES (
                 @Type, 
                 @Id,
-                @Queue,
+                @QueueId,
                 @ScheduledAt,
                 @Args,
                 @CreatedAt,
@@ -266,7 +267,7 @@ internal static class NpgsqlOperationStorageQueries
     }
 
     internal static CommandDefinition GetNextForExecution(
-        string queue,
+        OperationQueueId queueId,
         TimeSpan lockDuration,
         DateTime now,
         CancellationToken cancellationToken
@@ -284,7 +285,7 @@ internal static class NpgsqlOperationStorageQueries
                     SELECT type, id
                     FROM duops_operations
                     WHERE
-                        queue = @Queue
+                        queue_id = @QueueId
                         AND state = 10 -- Active
                         AND coalesce(locked_until, scheduled_at) < @Now
                     FOR UPDATE SKIP LOCKED
@@ -298,7 +299,7 @@ internal static class NpgsqlOperationStorageQueries
             """,
             new
             {
-                Queue = queue,
+                QueueId = queueId.Value,
                 LockedUntil = now + lockDuration,
                 Now = now,
             },

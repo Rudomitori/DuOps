@@ -3,7 +3,7 @@ namespace DuOps.Npgsql.Dtos;
 internal sealed record OperationDto(
     string Type,
     string Id,
-    string Queue,
+    string QueueId,
     DateTime? ScheduledAt,
     string Args,
     DateTime CreatedAt,

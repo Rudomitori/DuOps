@@ -7,7 +7,7 @@ namespace DuOps.Core.Storages;
 public interface IOperationStorage
 {
     IAsyncEnumerable<IOperationStorageHandle> EnumerateForExecutionAsync(
-        string queue,
+        OperationQueueId queueId,
         CancellationToken cancellationToken = default
     );
 
@@ -19,7 +19,7 @@ public interface IOperationStorage
 
     Task ScheduleOperationAsync(
         OperationType operationType,
-        string queue,
+        OperationQueueId queueId,
         SerializedOperationId serializedOperationId,
         SerializedOperationArgs serializedOperationArgs,
         CancellationToken cancellationToken = default

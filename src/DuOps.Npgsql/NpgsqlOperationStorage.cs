@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Dapper;
+using DuOps.Core;
 using DuOps.Core.InnerResults;
 using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
@@ -19,7 +20,7 @@ internal sealed class NpgsqlOperationStorage(
 ) : IOperationStorage
 {
     public async IAsyncEnumerable<IOperationStorageHandle> EnumerateForExecutionAsync(
-        string queue,
+        OperationQueueId queueId,
         [EnumeratorCancellation] CancellationToken cancellationToken = default
     )
     {
@@ -34,7 +35,7 @@ internal sealed class NpgsqlOperationStorage(
             );
 
             var query = NpgsqlOperationStorageQueries.GetNextForExecution(
-                queue,
+                queueId,
                 options.LockDuration,
                 timeProvider.GetUtcNow().UtcDateTime,
                 cancellationToken
@@ -139,7 +140,7 @@ internal sealed class NpgsqlOperationStorage(
 
     public async Task ScheduleOperationAsync(
         OperationType operationType,
-        string queue,
+        OperationQueueId queueId,
         SerializedOperationId serializedOperationId,
         SerializedOperationArgs serializedOperationArgs,
         CancellationToken cancellationToken = default
@@ -149,7 +150,7 @@ internal sealed class NpgsqlOperationStorage(
         var serializedOperation = new SerializedOperation(
             operationType,
             serializedOperationId,
-            queue,
+            queueId,
             ScheduledAt: now.DateTime,
             serializedOperationArgs,
             CreatedAt: now.DateTime,
@@ -318,7 +319,7 @@ internal sealed class NpgsqlOperationStorage(
         return new SerializedOperation(
             new OperationType(dto.Type),
             new SerializedOperationId(dto.Id),
-            Queue: dto.Queue,
+            QueueId: new OperationQueueId(dto.QueueId),
             ScheduledAt: dto.ScheduledAt,
             State: MapToSerializedOperationState(dto),
             Args: new SerializedOperationArgs(dto.Args),
@@ -352,7 +353,7 @@ internal sealed class NpgsqlOperationStorage(
         return new OperationDto(
             Type: operation.Type.Value,
             Id: operation.Id.Value,
-            Queue: operation.Queue,
+            QueueId: operation.QueueId,
             ScheduledAt: operation.ScheduledAt,
             Args: operation.Args.Value,
             State: operation.State switch

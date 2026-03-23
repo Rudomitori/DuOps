@@ -18,7 +18,7 @@ public abstract class StorageBuilder
         StorageName = storageName;
     }
 
-    public void AddWorkers(string queueName, int workerCount)
+    public void AddWorkers(OperationQueueId queueId, int workerCount)
     {
         for (var i = 0; i < workerCount; i++)
         {
@@ -40,7 +40,7 @@ public abstract class StorageBuilder
                     telemetry,
                     timeProvider,
                     serviceProvider,
-                    queueName
+                    queueId
                 );
             });
         }

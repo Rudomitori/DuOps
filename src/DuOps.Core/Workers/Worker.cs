@@ -18,7 +18,7 @@ internal sealed class Worker(
     IOperationTelemetry telemetry,
     TimeProvider timeProvider,
     IServiceProvider serviceProvider,
-    string queue
+    OperationQueueId queueId
 ) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -27,7 +27,7 @@ internal sealed class Worker(
         {
             try
             {
-                var enumerableHandles = storage.EnumerateForExecutionAsync(queue, stoppingToken);
+                var enumerableHandles = storage.EnumerateForExecutionAsync(queueId, stoppingToken);
                 await foreach (var storageHandle in enumerableHandles)
                     await using (storageHandle)
                         await ExecuteAsync(storageHandle, stoppingToken);
@@ -38,7 +38,7 @@ internal sealed class Worker(
             }
             catch (Exception e)
             {
-                logger.LogError(e, "Exception occured while executing {Queue}", queue);
+                logger.LogError(e, "Exception occured while processing queue {QueueId}", queueId);
                 await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
         }

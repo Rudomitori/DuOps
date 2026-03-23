@@ -5,7 +5,7 @@ namespace DuOps.Core.Operations;
 public sealed record SerializedOperation(
     OperationType Type,
     SerializedOperationId Id,
-    string Queue,
+    OperationQueueId QueueId,
     DateTime? ScheduledAt,
     SerializedOperationArgs Args,
     DateTime CreatedAt,

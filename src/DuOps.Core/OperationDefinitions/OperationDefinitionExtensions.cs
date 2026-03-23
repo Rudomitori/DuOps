@@ -192,7 +192,7 @@ public static class OperationDefinitionExtensions
         return new SerializedOperation(
             operationDefinition.Type,
             operationDefinition.SerializeId(operation.Id),
-            Queue: operation.Queue,
+            QueueId: operation.QueueId,
             ScheduledAt: operation.ScheduledAt,
             operationDefinition.SerializeArgs(operation.Args),
             CreatedAt: operation.CreatedAt,
@@ -209,7 +209,7 @@ public static class OperationDefinitionExtensions
         return new Operation<TId, TArgs, TResult>(
             operationDefinition.Type,
             operationDefinition.DeserializeId(serializedOperation.Id),
-            Queue: serializedOperation.Queue,
+            QueueId: serializedOperation.QueueId,
             ScheduledAt: serializedOperation.ScheduledAt,
             operationDefinition.DeserializeArgs(serializedOperation.Args),
             CreatedAt: serializedOperation.CreatedAt,

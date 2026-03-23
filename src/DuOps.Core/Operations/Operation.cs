@@ -5,7 +5,7 @@ namespace DuOps.Core.Operations;
 public sealed record Operation<TId, TArgs, TResult>(
     OperationType Type,
     TId Id,
-    string Queue,
+    OperationQueueId QueueId,
     DateTime? ScheduledAt,
     TArgs Args,
     DateTime CreatedAt,

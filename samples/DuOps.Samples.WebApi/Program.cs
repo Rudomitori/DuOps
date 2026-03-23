@@ -1,3 +1,4 @@
+using DuOps.Core;
 using DuOps.Core.DependencyInjection;
 using DuOps.Core.Storages;
 using DuOps.Npgsql;
@@ -7,12 +8,14 @@ using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using OpenTelemetry.Metrics;
 
+var appOperationQueueId = new OperationQueueId("Default");
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 builder
     .Services.AddOpenTelemetry()
-    .WithMetrics(builder => builder.AddDuOpsInstrumentation().AddPrometheusExporter());
+    .WithMetrics(static builder => builder.AddDuOpsInstrumentation().AddPrometheusExporter());
 
 builder.Services.AddSingleton(serviceProvider =>
 {
@@ -46,7 +49,7 @@ builder.Services.AddDuOps(duOpsBuilder =>
                     options.LockExtendingInterval = TimeSpan.FromSeconds(1);
                 });
 
-            storageBuilder.AddWorkers("QueueName", 10);
+            storageBuilder.AddWorkers(appOperationQueueId, 10);
         }
     );
 });
@@ -72,7 +75,7 @@ app.MapPost(
 
         await operationStorage.ScheduleOperationAsync(
             SampleOperationHandler.Definition,
-            "QueueName",
+            appOperationQueueId,
             operationId,
             new SampleOperationArgs(),
             cancellationToken
