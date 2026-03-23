@@ -1,0 +1,26 @@
+<Solution>
+  <Folder Name="/common/">
+    <File Path=".config/dotnet-tools.json" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="README.md" />
+    <File Path="scripts/db-for-samples/docker-compose.yaml" />
+  </Folder>
+  <Folder Name="/Samples/">
+    <File Path="samples/Directory.Build.props" />
+    <File Path="samples/Directory.Packages.props" />
+    <Project Path="samples/DuOps.Samples.WebApi/DuOps.Samples.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/Src/">
+    <Project Path="src/DuOps.Core/DuOps.Core.csproj" />
+    <Project Path="src/DuOps.Npgsql.Migrations/DuOps.Npgsql.Migrations.csproj" />
+    <Project Path="src/DuOps.Npgsql/DuOps.Npgsql.csproj" />
+    <Project Path="src/DuOps.OpenTelemetry/DuOps.OpenTelemetry.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <File Path="tests/Directory.Build.props" />
+    <Project Path="tests/DuOps.Core.Tests/DuOps.Core.Tests.csproj" />
+    <Project Path="tests/DuOps.Npgsql.Tests/DuOps.Npgsql.Tests.csproj" />
+  </Folder>
+</Solution>
