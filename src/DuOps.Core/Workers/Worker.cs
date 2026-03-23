@@ -23,11 +23,25 @@ internal sealed class Worker(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var enumerableHandles = storage.EnumerateForExecutionAsync(queue, stoppingToken);
-
-        await foreach (var storageHandle in enumerableHandles)
-            await using (storageHandle)
-                await ExecuteAsync(storageHandle, stoppingToken);
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                var enumerableHandles = storage.EnumerateForExecutionAsync(queue, stoppingToken);
+                await foreach (var storageHandle in enumerableHandles)
+                    await using (storageHandle)
+                        await ExecuteAsync(storageHandle, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "Exception occured while executing {Queue}", queue);
+                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+            }
+        }
     }
 
     private async Task ExecuteAsync(
