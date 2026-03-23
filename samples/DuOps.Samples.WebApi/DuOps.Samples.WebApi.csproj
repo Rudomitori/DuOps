@@ -1,15 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
-    <PackageReference Include="DuOps.Core" />
-    <PackageReference Include="DuOps.Hangfire" />
-    <PackageReference Include="DuOps.Npgsql" />
-    <PackageReference Include="DuOps.Npgsql.OpenTelemetry" />
-    <PackageReference Include="Hangfire.AspNetCore" />
-    <PackageReference Include="Hangfire.MemoryStorage" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\DuOps.Core\DuOps.Core.csproj" />
+    <ProjectReference Include="..\..\src\DuOps.Npgsql.Migrations\DuOps.Npgsql.Migrations.csproj" />
+    <ProjectReference Include="..\..\src\DuOps.Npgsql\DuOps.Npgsql.csproj" />
+    <ProjectReference Include="..\..\src\DuOps.OpenTelemetry\DuOps.OpenTelemetry.csproj" />
   </ItemGroup>
 </Project>

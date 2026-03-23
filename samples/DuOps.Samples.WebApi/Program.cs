@@ -1,14 +1,7 @@
 using DuOps.Core.DependencyInjection;
-using DuOps.Core.OperationDefinitions;
-using DuOps.Core.OperationManagers;
-using DuOps.Core.OperationPollers;
-using DuOps.Core.Operations;
-using DuOps.Hangfire;
+using DuOps.Core.Storages;
 using DuOps.Npgsql;
-using DuOps.OpenTelemetry;
 using DuOps.Samples.WebApi.SampleOperation;
-using Hangfire;
-using Hangfire.MemoryStorage;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using OpenTelemetry.Metrics;
@@ -25,23 +18,34 @@ builder.Services.AddSingleton(serviceProvider =>
     return new NpgsqlDataSourceBuilder(connectionString).Build();
 });
 
-builder.Services.AddDuOps(builder =>
+builder.Services.AddDuOps(duOpsBuilder =>
 {
-    builder.AddOpenTelemetryInstrumentation();
-    builder.Services.AddNpgsqlOperationStorage();
-    builder.Services.AddHangfireOperationPollingScheduler();
+    duOpsBuilder.AddOperation(
+        SampleOperationHandler.Definition,
+        operationBuilder =>
+        {
+            operationBuilder.AddScopedHandler<SampleOperationHandler>();
+            operationBuilder.RetryPolicy = SampleOperationHandler.RetryPolicy;
+        }
+    );
 
-    builder.Services.AddDuOpsOperation<
-        SampleOperationArgs,
-        SampleOperationResult,
-        SampleOperationImplementation
-    >(SampleOperationDefinition.Instance);
-});
+    duOpsBuilder.AddNpgsqlOperationStorage(
+        "StorageName",
+        storageBuilder =>
+        {
+            storageBuilder.UseNpgsqlDataSource();
 
-builder.Services.AddHangfire(config => config.UseMemoryStorage());
-builder.Services.AddHangfireServer(config =>
-{
-    config.SchedulePollingInterval = TimeSpan.FromMilliseconds(200);
+            storageBuilder
+                .OptionsBuilder.BindConfiguration($"DuOps:{storageBuilder.StorageName}")
+                .Configure(options =>
+                {
+                    options.LockDuration = TimeSpan.FromSeconds(30);
+                    options.LockExtendingInterval = TimeSpan.FromSeconds(1);
+                });
+
+            storageBuilder.AddWorkers("QueueName", 10);
+        }
+    );
 });
 
 var app = builder.Build();
@@ -56,31 +60,40 @@ app.UseOpenTelemetryPrometheusScrapingEndpoint();
 
 app.MapPost(
     "/api/operation/schedule",
-    async ([FromServices] IOperationManager operationManager) =>
+    async (
+        [FromKeyedServices("StorageName")] IOperationStorage operationStorage,
+        CancellationToken cancellationToken
+    ) =>
     {
-        var operation = SampleOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
+        var operationId = Guid.CreateVersion7();
+
+        await operationStorage.ScheduleOperationAsync(
+            SampleOperationHandler.Definition,
+            "QueueName",
+            operationId,
             new SampleOperationArgs(),
-            DateTime.UtcNow
-        );
-        operation = await operationManager.StartInBackground(
-            SampleOperationDefinition.Instance,
-            operation
+            cancellationToken
         );
 
-        return operation.Id;
+        return operationId;
     }
 );
 
 app.MapPost(
     "/api/operations/{id}/poll",
-    async ([FromServices] IOperationPoller poller, [FromRoute] string id) =>
+    async (
+        [FromKeyedServices("StorageName")] IOperationStorage operationStorage,
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken
+    ) =>
     {
-        var operationState = await poller.PollOperation(
-            SampleOperationDefinition.Instance,
-            new OperationId(id)
+        var operation = await operationStorage.GetByIdOrDefaultAsync(
+            SampleOperationHandler.Definition,
+            id,
+            cancellationToken
         );
-        return operationState;
+
+        return operation?.State;
     }
 );
 

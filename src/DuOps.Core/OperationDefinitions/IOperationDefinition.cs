@@ -1,21 +1,15 @@
-﻿using DuOps.Core.OperationDefinitions.RetryPolicies;
+﻿using DuOps.Core.Serializers;
 
 namespace DuOps.Core.OperationDefinitions;
 
-public interface IOperationDefinition<TArgs, TResult> : IOperationDefinition
+public interface IOperationDefinition<TId, TArgs, TResult> : IOperationDefinition
 {
-    string SerializeArgs(TArgs args);
-
-    TArgs DeserializeArgs(string serializedArgs);
-
-    string SerializeResult(TResult result);
-
-    TResult DeserializeResult(string serializedResult);
+    ISerializer<TId> IdSerializer { get; }
+    ISerializer<TArgs> ArgsSerializer { get; }
+    ISerializer<TResult> ResultSerializer { get; }
 }
 
 public interface IOperationDefinition
 {
-    OperationDiscriminator Discriminator { get; }
-
-    IOperationRetryPolicy RetryPolicy { get; }
+    OperationType Type { get; }
 }

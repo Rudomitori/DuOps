@@ -1,3 +1,3 @@
 namespace DuOps.Samples.WebApi.SampleOperation;
 
-public sealed record SampleOperationResult();
+public sealed record SampleOperationResult;

@@ -1,10 +1,8 @@
 namespace DuOps.Npgsql.Dtos;
 
-public enum OperationStateDto
+public enum OperationStateDto : short
 {
-    Created = 10,
-    Waiting = 20,
-    Retrying = 30,
-    Finished = 40,
-    Failed = 50,
+    Active = 10,
+    Completed = 20,
+    Failed = 30,
 }

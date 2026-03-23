@@ -1,14 +1,14 @@
 ﻿using DuOps.Core.OperationDefinitions;
-using DuOps.Core.Operations.InterResults;
 
 namespace DuOps.Core.Operations;
 
 public sealed record SerializedOperation(
-    OperationDiscriminator Discriminator,
-    OperationId Id,
-    OperationPollingScheduleId? PollingScheduleId,
-    DateTime StartedAt,
+    OperationType Type,
+    SerializedOperationId Id,
+    string Queue,
+    DateTime? ScheduledAt,
     SerializedOperationArgs Args,
+    DateTime CreatedAt,
     SerializedOperationState State,
-    IReadOnlyCollection<SerializedInterResult> InterResults
+    int RetryCount
 );

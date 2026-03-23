@@ -1,21 +1,26 @@
-﻿using System.Diagnostics;
-using DuOps.Core.OperationDefinitions;
+﻿using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
 
 namespace DuOps.Core.Storages;
 
 public static class OperationStorageExtensions
 {
-    public static async Task<Operation<TArgs, TResult>?> GetByIdOrDefault<TArgs, TResult>(
+    public static async Task<Operation<TId, TArgs, TResult>?> GetByIdOrDefaultAsync<
+        TId,
+        TArgs,
+        TResult
+    >(
         this IOperationStorage storage,
-        IOperationDefinition<TArgs, TResult> operationDefinition,
-        OperationId operationId,
+        IOperationDefinition<TId, TArgs, TResult> operationDefinition,
+        TId operationId,
         CancellationToken cancellationToken = default
     )
     {
-        var serializedOperation = await storage.GetByIdOrDefault(
-            operationDefinition.Discriminator,
-            operationId,
+        var serializedOperationId = operationDefinition.SerializeId(operationId);
+
+        var serializedOperation = await storage.GetByIdOrDefaultAsync(
+            operationDefinition.Type,
+            serializedOperationId,
             cancellationToken
         );
         return serializedOperation is not null
@@ -23,65 +28,24 @@ public static class OperationStorageExtensions
             : null;
     }
 
-    public static async Task<Operation<TArgs, TResult>> GetOrAdd<TArgs, TResult>(
+    public static Task ScheduleOperationAsync<TId, TArgs, TResult>(
         this IOperationStorage storage,
-        IOperationDefinition<TArgs, TResult> operationDefinition,
-        Operation<TArgs, TResult> operation,
+        IOperationDefinition<TId, TArgs, TResult> operationDefinition,
+        string queue,
+        TId operationId,
+        TArgs operationArgs,
         CancellationToken cancellationToken = default
     )
     {
-        var serializedOperation = operationDefinition.Serialize(operation);
-        serializedOperation = await storage.GetOrAdd(serializedOperation, cancellationToken);
-        return operationDefinition.Deserialize(serializedOperation);
-    }
+        var serializedOperationId = operationDefinition.SerializeId(operationId);
+        var serializedOperationArgs = operationDefinition.SerializeArgs(operationArgs);
 
-    public static async Task SetState<TArgs, TResult>(
-        this IOperationStorage storage,
-        IOperationDefinition<TArgs, TResult> operationDefinition,
-        OperationId operationId,
-        OperationState<TResult> state,
-        CancellationToken cancellationToken = default
-    )
-    {
-        var serializedState = operationDefinition.Serialize(state);
-        await storage.SetState(
-            operationDefinition.Discriminator,
-            operationId,
-            serializedState,
+        return storage.ScheduleOperationAsync(
+            operationDefinition.Type,
+            queue,
+            serializedOperationId,
+            serializedOperationArgs,
             cancellationToken
         );
-    }
-
-    public static async Task<SerializedOperation?> AwaitOperationHasPollingScheduleIdAndGetByIdOrDefault(
-        this IOperationStorage storage,
-        OperationDiscriminator discriminator,
-        OperationId operationId,
-        TimeSpan attemptsInterval,
-        TimeSpan maxWaitTime,
-        CancellationToken cancellationToken = default
-    )
-    {
-        var stopWatch = Stopwatch.StartNew();
-
-        var operation = await storage.GetByIdOrDefault(
-            discriminator,
-            operationId,
-            cancellationToken
-        );
-
-        while (
-            operation?.PollingScheduleId is null
-            && stopWatch.Elapsed + attemptsInterval < maxWaitTime
-        )
-        {
-            await Task.Delay(attemptsInterval, cancellationToken);
-            operation = await storage.GetByIdOrDefault(
-                discriminator,
-                operationId,
-                cancellationToken
-            );
-        }
-
-        return operation;
     }
 }

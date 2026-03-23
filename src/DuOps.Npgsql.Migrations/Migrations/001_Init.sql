@@ -1,39 +1,55 @@
-create table if not exists duops_operations
+CREATE TABLE IF NOT EXISTS duops_operations
 (
-    discriminator       text                     not null,
-    id                  text                     not null,
+    type          text          NOT NULL,
+    id            text          NOT NULL,
 
-    polling_schedule_id text,
-    started_at          timestamp with time zone not null,
+    queue         text          NOT NULL,
+    scheduled_at  timestamptz,
+    locked_until  timestamptz,
+    args          text          NOT NULL,
 
-    args                text                     not null,
+    created_at    timestamptz   NOT NULL,
+    finished_at   timestamptz,
 
-    state               integer                  not null,
-    result              text,
-    fail_reason         text,
-    waiting_until       timestamptz,
-    retrying_at         timestamptz,
-    retry_count         integer,
+    state         smallint      NOT NULL,
 
-    inter_results       jsonb                    not null,
+    result        text,
 
-    primary key (discriminator, id)
+    fail_reason   text,
+
+    retry_count   integer       NOT NULL,
+
+    primary key (type, id)
 );
 
+CREATE INDEX IF NOT EXISTS ix_duops_operations_queue
+    ON duops_operations (queue, coalesce(locked_until, scheduled_at))
+    -- where state = Active
+    WHERE state = 10;
+
+
 comment on column duops_operations.state is $$
-Created = 10
-Waiting = 20,
-Retrying = 30,
-Finished = 40,
-Failed = 50,
+Active = 10
+Completed = 20,
+Failed = 30,
 $$;
 
-comment on column duops_operations.inter_results is $$
-{ 
-    "discriminator1": "serializedValue",
-    "discriminator2": {
-        "key1": "serializedValue",
-        "key1": "serializedValue"
-    }
-}
-$$;
+CREATE TABLE IF NOT EXISTS duops_inner_results
+(
+    operation_type             text         NOT NULL,
+    operation_id               text         NOT NULL,
+
+    inner_result_type          text         NOT NULL,
+    inner_result_id            text,
+
+    value                      text         NOT NULL,
+    created_at                 timestamptz  NOT NULL,
+    updated_at                 timestamptz,
+
+    UNIQUE NULLS NOT DISTINCT (
+         operation_type,
+         operation_id,
+         inner_result_type,
+         inner_result_id
+    )
+);

@@ -1,56 +1,53 @@
-﻿using DuOps.Core.OperationDefinitions;
+﻿using DuOps.Core.InnerResults;
+using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
-using DuOps.Core.Operations.InterResults;
-using DuOps.Core.Operations.InterResults.Definitions;
 
 namespace DuOps.Core.Telemetry;
 
 public interface IOperationTelemetry
 {
-    void OnOperationStartedInBackground(
+    void OnInnerResultAdded(
         IOperationDefinition operationDefinition,
-        SerializedOperation operation
-    );
-
-    void OnInterResultAdded(
-        IOperationDefinition operationDefinition,
-        OperationId operationId,
-        SerializedInterResult interResult
+        SerializedOperationId serializedOperationId,
+        SerializedInnerResult innerResult
     );
 
     void OnOperationFinished(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
+        SerializedOperationId serializedOperationId,
         SerializedOperationResult serializedResult
     );
 
     void OnOperationThrewException(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
+        SerializedOperationId serializedOperationId,
         Exception exception,
         DateTimeOffset retryingAt
     );
 
     void OnOperationFailed(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
+        SerializedOperationId serializedOperationId,
         Exception exception
     );
 
     void OnOperationWaiting(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
+        SerializedOperationId serializedOperationId,
         DateTimeOffset waitingUntil,
         string reason
     );
 
-    void OnInterResultThrewException(
+    void OnInnerResultThrewException(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
-        IInterResultDefinition interResultDefinition,
-        SerializedInterResultKey? interResultKey,
+        SerializedOperationId serializedOperationId,
+        IInnerResultDefinition innerResultDefinition,
+        SerializedInnerResultId? innerResultKey,
         Exception exception
     );
 
-    void OnOperationYielded(IOperationDefinition operationDefinition, OperationId operationId);
+    void OnOperationYielded(
+        IOperationDefinition operationDefinition,
+        SerializedOperationId serializedOperationId
+    );
 }

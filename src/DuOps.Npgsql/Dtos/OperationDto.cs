@@ -1,16 +1,15 @@
 namespace DuOps.Npgsql.Dtos;
 
 internal sealed record OperationDto(
-    string Discriminator,
+    string Type,
     string Id,
-    string? PollingScheduleId,
-    DateTime StartedAt,
+    string Queue,
+    DateTime? ScheduledAt,
     string Args,
-    OperationStateDto State,
+    DateTime CreatedAt,
+    DateTime? FinishedAt,
+    short State,
     string? Result,
-    DateTime? WaitingUntil,
-    DateTime? RetryingAt,
-    int? RetryCount,
     string? FailReason,
-    string InterResults
+    int RetryCount
 );

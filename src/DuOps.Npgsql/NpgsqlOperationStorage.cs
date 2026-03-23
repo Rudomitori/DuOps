@@ -1,288 +1,347 @@
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
+using System.Runtime.CompilerServices;
 using Dapper;
+using DuOps.Core.InnerResults;
 using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
-using DuOps.Core.Operations.InterResults;
-using DuOps.Core.Operations.InterResults.Definitions;
 using DuOps.Core.Storages;
 using DuOps.Npgsql.Dtos;
-using Npgsql;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DuOps.Npgsql;
 
-internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOperationStorage
+internal sealed class NpgsqlOperationStorage(
+    IConnectionFactory connectionFactory,
+    IOptionsMonitor<NpgsqlOperationStorageOptions> optionsMonitor,
+    TimeProvider timeProvider,
+    ILogger<NpgsqlOperationStorage> logger,
+    string storageName
+) : IOperationStorage
 {
-    public async Task<SerializedOperation?> GetByIdOrDefault(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
+    public async IAsyncEnumerable<IOperationStorageHandle> EnumerateForExecutionAsync(
+        string queue,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default
+    )
+    {
+        while (true)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                yield break;
+
+            var options = optionsMonitor.Get(storageName);
+            await using var connection = await connectionFactory.GetConnectionAsync(
+                cancellationToken
+            );
+
+            var query = NpgsqlOperationStorageQueries.GetNextForExecution(
+                queue,
+                options.LockDuration,
+                timeProvider.GetUtcNow().UtcDateTime,
+                cancellationToken
+            );
+
+            var dto = await connection.QuerySingleOrDefaultAsync<GetNextForExecutionDto>(query);
+
+            if (dto is null)
+            {
+                await Task.Delay(options.GetNextInterval, cancellationToken);
+                continue;
+            }
+
+            var operationType = new OperationType(dto.Type);
+            var operationId = new SerializedOperationId(dto.Id);
+            var args = new SerializedOperationArgs(dto.Args);
+
+            var innerResults = await GetAllInnerResultsAsync(
+                operationType,
+                operationId,
+                cancellationToken
+            );
+
+            yield return new NpgsqlOperationStorageHandle(
+                this,
+                timeProvider,
+                options,
+                operationType,
+                operationId,
+                args,
+                innerResults,
+                dto.RetryCount,
+                logger
+            );
+        }
+    }
+
+    internal async Task ExtendLockAsync(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        DateTime newLockedUntil,
+        CancellationToken cancellationToken
+    )
+    {
+        await using var connection = await connectionFactory.GetConnectionAsync(cancellationToken);
+
+        var query = NpgsqlOperationStorageQueries.ExtendLock(
+            operationType,
+            serializedOperationId,
+            newLockedUntil,
+            cancellationToken
+        );
+
+        var affectedRows = await connection.QuerySingleAsync<int>(query);
+
+        if (affectedRows == 0)
+            throw new InvalidOperationException(
+                $"{operationType}({serializedOperationId}) not found"
+            );
+    }
+
+    internal async Task RemoveLockAsync(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        CancellationToken cancellationToken
+    )
+    {
+        await using var connection = await connectionFactory.GetConnectionAsync(cancellationToken);
+
+        var query = NpgsqlOperationStorageQueries.RemoveLock(
+            operationType,
+            serializedOperationId,
+            cancellationToken
+        );
+
+        var affectedRows = await connection.ExecuteAsync(query);
+
+        if (affectedRows == 0)
+            throw new InvalidOperationException(
+                $"{operationType}({serializedOperationId}) not found"
+            );
+    }
+
+    public async Task<SerializedOperation?> GetByIdOrDefaultAsync(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
         CancellationToken cancellationToken = default
     )
     {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await connectionFactory.GetConnectionAsync(cancellationToken);
 
         var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
-            NpgsqlOperationStorageQueries.GetById(discriminator, operationId, cancellationToken)
+            NpgsqlOperationStorageQueries.GetById(
+                operationType,
+                serializedOperationId,
+                cancellationToken
+            )
         );
 
         return dto is null ? null : MapToSerializedOperation(dto);
     }
 
-    public async Task<SerializedOperation> GetOrAdd(
-        SerializedOperation serializedOperation,
+    public async Task ScheduleOperationAsync(
+        OperationType operationType,
+        string queue,
+        SerializedOperationId serializedOperationId,
+        SerializedOperationArgs serializedOperationArgs,
         CancellationToken cancellationToken = default
     )
     {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-
-        var affectedRows = await connection.ExecuteAsync(
-            NpgsqlOperationStorageQueries.GetOrAdd(MapToDto(serializedOperation), cancellationToken)
+        var now = timeProvider.GetUtcNow();
+        var serializedOperation = new SerializedOperation(
+            operationType,
+            serializedOperationId,
+            queue,
+            ScheduledAt: now.DateTime,
+            serializedOperationArgs,
+            CreatedAt: now.DateTime,
+            SerializedOperationState.Active.Instance,
+            RetryCount: 0
         );
 
-        // TODO: Avoid null on race condition
-        return affectedRows == 1
-            ? serializedOperation
-            : await GetByIdOrDefault(
-                serializedOperation.Discriminator,
-                serializedOperation.Id,
-                CancellationToken.None
-            );
-    }
-
-    public Task AddInterResult(
-        OperationDiscriminator operationDiscriminator,
-        OperationId operationId,
-        SerializedInterResult result,
-        CancellationToken cancellationToken = default
-    )
-    {
-        return result.Key is null
-            ? AddNotKeyedInterResult(operationDiscriminator, operationId, result, cancellationToken)
-            : AddKeyedInterResult(operationDiscriminator, operationId, result, cancellationToken);
-    }
-
-    public async Task SetState(
-        OperationDiscriminator operationDiscriminator,
-        OperationId operationId,
-        SerializedOperationState state,
-        CancellationToken cancellationToken = default
-    )
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-
-        var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
-            NpgsqlOperationStorageQueries.SetState(
-                operationDiscriminator,
-                operationId,
-                state,
-                cancellationToken
-            )
-        );
-
-        CheckOperationIsFound(operationDiscriminator, operationId, dto);
-        var stateFromDb = MapToSerializedOperationState(dto);
-
-        var stateIsSet = (state, stateFromDb) switch
-        {
-            (SerializedOperationState.Yielded, SerializedOperationState.Yielded) => true,
-            (SerializedOperationState.Waiting w1, SerializedOperationState.Waiting w2) =>
-                w1.Until.Millisecond == w2.Until.Millisecond,
-            (SerializedOperationState.Retrying r1, SerializedOperationState.Retrying r2) =>
-                r1.At.Millisecond == r2.At.Millisecond && r1.RetryCount == r2.RetryCount,
-            _ => state == stateFromDb,
-        };
-
-        if (stateIsSet)
-            return;
-
-        // TODO: Separate different cases
-        // TODO: Use custom exception
-        throw new InvalidOperationException("Failed to set operation state");
-    }
-
-    private async Task AddNotKeyedInterResult(
-        OperationDiscriminator operationDiscriminator,
-        OperationId operationId,
-        SerializedInterResult result,
-        CancellationToken cancellationToken
-    )
-    {
-        Debug.Assert(result.Key is null);
-
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-
-        var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
-            NpgsqlOperationStorageQueries.AddNotKeyedInterResult(
-                operationDiscriminator,
-                operationId,
-                result,
-                cancellationToken
-            )
-        );
-
-        #region Post condition checks
-
-        CheckOperationIsFound(operationDiscriminator, operationId, dto);
-        CheckOperationStateIsNotFinal(operationDiscriminator, operationId, dto);
-
-        using var jsonDocument = JsonDocument.Parse(dto.InterResults);
-
-        CheckInterResultsRootElementIsObject(operationDiscriminator, operationId, jsonDocument);
-
-        var property = jsonDocument.RootElement.GetProperty(result.Discriminator.Value);
-
-        if (property.ValueKind is JsonValueKind.Object)
-            throw new InvalidOperationException(
-                $"Can not add result {result.Discriminator} for {operationDiscriminator}({operationId})"
-                    + $" because keyed result {result.Discriminator} already exists"
-            );
-
-        if (property.ValueKind is not JsonValueKind.String)
-            throw new InvalidOperationException(
-                $"{operationDiscriminator}({operationId}).Results[{result.Discriminator}]"
-                    + $" has unexpected json value kind {property.ValueKind}"
-            );
-
-        if (property.GetString() != result.Value)
-            throw new InvalidOperationException(
-                $"Can not add result {result.Discriminator} for {operationDiscriminator}({operationId})"
-                    + $" because result {result.Discriminator} already exists"
-            );
-
-        #endregion
-    }
-
-    private async Task AddKeyedInterResult(
-        OperationDiscriminator operationDiscriminator,
-        OperationId operationId,
-        SerializedInterResult interResult,
-        CancellationToken cancellationToken
-    )
-    {
-        Debug.Assert(interResult.Key is not null);
-
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-
-        var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
-            NpgsqlOperationStorageQueries.AddKeyedInterResult(
-                operationDiscriminator,
-                operationId,
-                interResult,
-                cancellationToken
-            )
-        );
-
-        #region Post condition checks
-
-        CheckOperationIsFound(operationDiscriminator, operationId, dto);
-        CheckOperationStateIsNotFinal(operationDiscriminator, operationId, dto);
-
-        using var jsonDocument = JsonDocument.Parse(dto.InterResults);
-
-        CheckInterResultsRootElementIsObject(operationDiscriminator, operationId, jsonDocument);
-
-        var property = jsonDocument.RootElement.GetProperty(interResult.Discriminator.Value);
-
-        if (property.ValueKind is JsonValueKind.String)
-            throw new InvalidOperationException(
-                $"Can not add result {interResult.Discriminator} with key {interResult.Key} for {operationDiscriminator}({operationId})"
-                    + $" because non keyed result {interResult.Discriminator} already exists"
-            );
-
-        if (property.ValueKind is not JsonValueKind.Object)
-            throw new InvalidOperationException(
-                $"{operationDiscriminator}({operationId}).Results[{interResult.Discriminator}]"
-                    + $" has unexpected json value kind {property.ValueKind}"
-            );
-
-        var innerProperty = property.GetProperty(interResult.Key.Value.Value);
-
-        if (innerProperty.ValueKind != JsonValueKind.String)
-            throw new InvalidOperationException(
-                $"{operationDiscriminator}({operationId}).Results[{interResult.Discriminator}][{interResult.Key}]"
-                    + $" has unexpected json value kind {property.ValueKind}"
-            );
-
-        if (innerProperty.GetString() != interResult.Value)
-            throw new InvalidOperationException(
-                $"Can not add result {interResult.Discriminator} with key {interResult.Key} for {operationDiscriminator}({operationId})"
-                    + $" because result {interResult.Discriminator} already exists"
-            );
-
-        #endregion
-    }
-
-    public async Task<OperationPollingScheduleId> GetOrSetPollingScheduleId(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
-        OperationPollingScheduleId scheduleId,
-        CancellationToken cancellationToken = default
-    )
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-
-        var dto = await connection.QuerySingleOrDefaultAsync<OperationDto>(
-            NpgsqlOperationStorageQueries.GetOrSetPollingScheduleId(
-                discriminator,
-                operationId,
-                scheduleId,
-                cancellationToken
-            )
-        );
-
-        CheckOperationIsFound(discriminator, operationId, dto);
-        CheckOperationStateIsNotFinal(discriminator, operationId, dto);
-
-        return new OperationPollingScheduleId(dto.PollingScheduleId!);
-    }
-
-    public async Task Delete(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
-        CancellationToken cancellationToken = default
-    )
-    {
-        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var connection = await connectionFactory.GetConnectionAsync(cancellationToken);
 
         await connection.ExecuteAsync(
-            NpgsqlOperationStorageQueries.Delete(discriminator, operationId, cancellationToken)
+            NpgsqlOperationStorageQueries.ScheduleOperation(
+                MapToDto(serializedOperation),
+                cancellationToken
+            )
         );
+    }
+
+    public async Task<SerializedInnerResult[]> GetAllInnerResultsAsync(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await using var connection = await connectionFactory.GetConnectionAsync(cancellationToken);
+
+        var query = NpgsqlOperationStorageQueries.GetAllInnerResults(
+            operationType,
+            serializedOperationId,
+            cancellationToken
+        );
+
+        var dtos = await connection.QueryAsync<InnerResultDto>(query);
+
+        return dtos.Select(dto => new SerializedInnerResult(
+                new InnerResultType(dto.InnerResulttype),
+                dto.InnerResultId is null ? null : new SerializedInnerResultId(dto.InnerResultId),
+                new SerializedInnerResultValue(dto.Value),
+                CreatedAt: dto.CreatedAt,
+                UpdatedAt: dto.UpdatedAt
+            ))
+            .ToArray();
+    }
+
+    public async Task AddInnerResultsAsync(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        IReadOnlyList<SerializedInnerResult> innerResults,
+        CancellationToken cancellationToken = default
+    )
+    {
+        // TODO: Check operation exists
+        await using var connection = await connectionFactory.GetConnectionAsync(cancellationToken);
+
+        var query = NpgsqlOperationStorageQueries.AddInnerResults(
+            operationType,
+            serializedOperationId,
+            innerResults,
+            cancellationToken
+        );
+
+        await connection.ExecuteAsync(query);
+    }
+
+    public async Task ScheduleRetryAsync(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        DateTime retryAt,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await using var connection = await connectionFactory.GetConnectionAsync(cancellationToken);
+
+        var query = NpgsqlOperationStorageQueries.ScheduleRetry(
+            operationType,
+            serializedOperationId,
+            retryAt,
+            cancellationToken
+        );
+
+        var affectedRows = await connection.ExecuteAsync(query);
+
+        if (affectedRows == 0)
+            throw new InvalidOperationException(
+                $"{operationType}({serializedOperationId}) not found"
+            );
+    }
+
+    public async Task RescheduleAsync(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        DateTime at,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await using var connection = await connectionFactory.GetConnectionAsync(cancellationToken);
+
+        var query = NpgsqlOperationStorageQueries.Reschedule(
+            operationType,
+            serializedOperationId,
+            at,
+            cancellationToken
+        );
+
+        var affectedRows = await connection.ExecuteAsync(query);
+
+        if (affectedRows == 0)
+            throw new InvalidOperationException(
+                $"{operationType}({serializedOperationId}) not found"
+            );
+    }
+
+    public async Task CompleteAsync(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        SerializedOperationResult result,
+        DateTime now,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await using var connection = await connectionFactory.GetConnectionAsync(cancellationToken);
+
+        var query = NpgsqlOperationStorageQueries.Complete(
+            operationType,
+            serializedOperationId,
+            now,
+            result,
+            cancellationToken
+        );
+
+        var affectedRows = await connection.ExecuteAsync(query);
+
+        if (affectedRows == 0)
+            throw new InvalidOperationException(
+                $"{operationType}({serializedOperationId}) not found"
+            );
+    }
+
+    public async Task FailAsync(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        string reason,
+        DateTime now,
+        CancellationToken cancellationToken = default
+    )
+    {
+        await using var connection = await connectionFactory.GetConnectionAsync(cancellationToken);
+
+        var query = NpgsqlOperationStorageQueries.Fail(
+            operationType,
+            serializedOperationId,
+            now,
+            reason,
+            cancellationToken
+        );
+
+        var affectedRows = await connection.ExecuteAsync(query);
+
+        if (affectedRows == 0)
+            throw new InvalidOperationException(
+                $"{operationType}({serializedOperationId}) not found"
+            );
     }
 
     private SerializedOperation MapToSerializedOperation(OperationDto dto)
     {
         return new SerializedOperation(
-            new OperationDiscriminator(dto.Discriminator),
-            new OperationId(dto.Id),
-            dto.PollingScheduleId is null
-                ? null
-                : new OperationPollingScheduleId(dto.PollingScheduleId),
-            dto.StartedAt,
-            new SerializedOperationArgs(dto.Args),
+            new OperationType(dto.Type),
+            new SerializedOperationId(dto.Id),
+            Queue: dto.Queue,
+            ScheduledAt: dto.ScheduledAt,
             State: MapToSerializedOperationState(dto),
-            DeserializeInterResults(dto.InterResults)
+            Args: new SerializedOperationArgs(dto.Args),
+            CreatedAt: dto.CreatedAt,
+            RetryCount: dto.RetryCount
         );
     }
 
     private SerializedOperationState MapToSerializedOperationState(OperationDto dto)
     {
         // TODO: Add custom exception messages
-        return dto.State switch
+        return (OperationStateDto)dto.State switch
         {
-            OperationStateDto.Created => new SerializedOperationState.Created(),
-            OperationStateDto.Waiting => new SerializedOperationState.Waiting(
-                dto.WaitingUntil ?? throw new NullReferenceException()
-            ),
-            OperationStateDto.Retrying => new SerializedOperationState.Retrying(
-                dto.RetryingAt ?? throw new NullReferenceException(),
-                dto.RetryCount ?? throw new NullReferenceException()
-            ),
-            OperationStateDto.Finished => new SerializedOperationState.Finished(
-                new SerializedOperationResult(dto.Result ?? throw new NullReferenceException())
+            OperationStateDto.Active => new SerializedOperationState.Active(),
+            OperationStateDto.Completed => new SerializedOperationState.Completed(
+                At: dto.FinishedAt ?? throw new NullReferenceException(),
+                Result: new SerializedOperationResult(
+                    dto.Result ?? throw new NullReferenceException()
+                )
             ),
             OperationStateDto.Failed => new SerializedOperationState.Failed(
-                dto.FailReason ?? throw new NullReferenceException()
+                At: dto.FinishedAt ?? throw new NullReferenceException(),
+                Reason: dto.FailReason ?? throw new NullReferenceException()
             ),
             _ => throw new ArgumentOutOfRangeException(),
         };
@@ -291,171 +350,40 @@ internal sealed class NpgsqlOperationStorage(NpgsqlDataSource dataSource) : IOpe
     private static OperationDto MapToDto(SerializedOperation operation)
     {
         return new OperationDto(
-            operation.Discriminator.Value,
-            operation.Id.Value,
-            operation.PollingScheduleId?.Value,
-            operation.StartedAt,
-            operation.Args.Value,
+            Type: operation.Type.Value,
+            Id: operation.Id.Value,
+            Queue: operation.Queue,
+            ScheduledAt: operation.ScheduledAt,
+            Args: operation.Args.Value,
             State: operation.State switch
             {
-                SerializedOperationState.Created => OperationStateDto.Created,
-                SerializedOperationState.Failed => OperationStateDto.Failed,
-                SerializedOperationState.Finished => OperationStateDto.Finished,
-                SerializedOperationState.Retrying => OperationStateDto.Retrying,
-                SerializedOperationState.Waiting => OperationStateDto.Waiting,
+                SerializedOperationState.Active => (short)OperationStateDto.Active,
+                SerializedOperationState.Failed => (short)OperationStateDto.Failed,
+                SerializedOperationState.Completed => (short)OperationStateDto.Completed,
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(operation.State),
                     operation.State,
                     "Unknown operation state"
                 ),
             },
+            CreatedAt: operation.CreatedAt,
+            FinishedAt: operation.State switch
+            {
+                SerializedOperationState.Completed completed => completed.At,
+                SerializedOperationState.Failed failed => failed.At,
+                _ => null,
+            },
             Result: operation.State switch
             {
-                SerializedOperationState.Finished finished => finished.Result.Value,
+                SerializedOperationState.Completed finished => finished.Result.Value,
                 _ => null,
             },
-            WaitingUntil: operation.State switch
-            {
-                SerializedOperationState.Waiting waiting => waiting.Until.UtcDateTime,
-                _ => null,
-            },
-            RetryingAt: operation.State switch
-            {
-                SerializedOperationState.Retrying retrying => retrying.At.UtcDateTime,
-                _ => null,
-            },
-            RetryCount: operation.State switch
-            {
-                SerializedOperationState.Retrying retrying => retrying.RetryCount,
-                _ => null,
-            },
+            RetryCount: operation.RetryCount,
             FailReason: operation.State switch
             {
                 SerializedOperationState.Failed failed => failed.Reason,
                 _ => null,
-            },
-            InterResults: SerializedInterResults(operation.InterResults)
+            }
         );
     }
-
-    private static string SerializedInterResults(
-        IReadOnlyCollection<SerializedInterResult> interResults
-    )
-    {
-        var dictionary = interResults
-            .GroupBy(x => x.Discriminator)
-            .ToDictionary(
-                x => x.Key.Value,
-                object (x) =>
-                {
-                    var results = x.ToArray();
-
-                    if (results.Any(y => y.Key is not null))
-                    {
-                        Debug.Assert(results.All(y => y.Key is not null));
-                        Debug.Assert(results.DistinctBy(y => y.Key).Count() == results.Length);
-
-                        return results.ToDictionary(y => y.Key!.Value, y => y.Value);
-                    }
-
-                    Debug.Assert(results.Length == 1);
-
-                    return results[0].Value;
-                }
-            );
-
-        return JsonSerializer.Serialize(dictionary);
-    }
-
-    private static List<SerializedInterResult> DeserializeInterResults(string json)
-    {
-        var interResults = new List<SerializedInterResult>();
-
-        using var jsonDocument = JsonDocument.Parse(json);
-        foreach (var property in jsonDocument.RootElement.EnumerateObject())
-        {
-            var discriminator = new InterResultDiscriminator(property.Name);
-
-            switch (property.Value.ValueKind)
-            {
-                case JsonValueKind.String:
-                {
-                    var value = property.Value.GetString()!;
-
-                    var interResult = new SerializedInterResult(
-                        discriminator,
-                        Key: null,
-                        new SerializedInterResultValue(value)
-                    );
-                    interResults.Add(interResult);
-                    continue;
-                }
-                case JsonValueKind.Object:
-                {
-                    foreach (var innerProperty in property.Value.EnumerateObject())
-                    {
-                        var key = new SerializedInterResultKey(innerProperty.Name);
-
-                        if (innerProperty.Value.ValueKind != JsonValueKind.String)
-                            throw new InvalidOperationException(
-                                $"Internal result {discriminator}[{key}] contains unexpected json value kind {innerProperty.Value.ValueKind}"
-                            );
-
-                        var interResult = new SerializedInterResult(
-                            discriminator,
-                            key,
-                            new SerializedInterResultValue(innerProperty.Value.GetString()!)
-                        );
-                        interResults.Add(interResult);
-                    }
-                    continue;
-                }
-                default:
-                    throw new InvalidOperationException(
-                        $"Internal result {discriminator} contains unexpected json value kind {property.Value.ValueKind}"
-                    );
-            }
-        }
-
-        return interResults;
-    }
-
-    #region Common checks
-
-    private void CheckInterResultsRootElementIsObject(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
-        JsonDocument jsonDocument
-    )
-    {
-        if (jsonDocument.RootElement.ValueKind is not JsonValueKind.Object)
-            throw new InvalidOperationException(
-                $"{discriminator}({operationId}) has corrupted inter results"
-                    + $" with json value kind {jsonDocument.RootElement.ValueKind}"
-            );
-    }
-
-    private void CheckOperationIsFound(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
-        [NotNull] OperationDto? dto
-    )
-    {
-        if (dto is null)
-            throw new InvalidOperationException($"{discriminator}({operationId}) was not found");
-    }
-
-    private void CheckOperationStateIsNotFinal(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
-        OperationDto dto
-    )
-    {
-        if (dto.State is OperationStateDto.Finished or OperationStateDto.Failed)
-            throw new InvalidOperationException(
-                $"{discriminator}({operationId}).State = {dto.State}"
-            );
-    }
-
-    #endregion
 }

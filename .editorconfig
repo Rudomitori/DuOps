@@ -1,6 +1,10 @@
+[*]
+end_of_line = lf
+
 [*.{cs,csx}]
 indent_size = 4
 max_line_length = 100
+trailing_comma_in_multiline_lists = true
 
 [*.{csproj,props,targets,xml,config}]
 # Configurable behaviors

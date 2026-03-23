@@ -1,14 +1,17 @@
 ﻿using Dapper;
+using DuOps.Core.InnerResults;
 using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
-using DuOps.Core.Operations.InterResults.Definitions;
 using DuOps.Core.Storages;
 using DuOps.Core.Tests.TestOperation;
-using DuOps.Core.Tests.TestOperation.InterResults.First;
-using DuOps.Core.Tests.TestOperation.InterResults.Second;
-using DuOps.Core.Tests.TestOperation.InterResults.Third;
+using DuOps.Core.Tests.TestOperation.InnerResults.First;
+using DuOps.Core.Tests.TestOperation.InnerResults.Second;
 using DuOps.Npgsql.Migrations;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using Npgsql;
+using NSubstitute;
 using Shouldly;
 using Testcontainers.PostgreSql;
 
@@ -24,7 +27,7 @@ public sealed class NpgsqlOperationStorageTests
     [OneTimeSetUp]
     public async Task Setup()
     {
-        _container = new PostgreSqlBuilder().Build();
+        _container = new PostgreSqlBuilder("postgres:15").Build();
         await _container.StartAsync();
 
         var connectionString = _container.GetConnectionString();
@@ -35,7 +38,19 @@ public sealed class NpgsqlOperationStorageTests
         foreach (var migration in NpgsqlOperationStorageMigrations.GetMigrations())
             await connection.ExecuteAsync(migration);
 
-        _storage = new NpgsqlOperationStorage(_dataSource);
+        var optionsMonitor = Substitute.For<IOptionsMonitor<NpgsqlOperationStorageOptions>>();
+        optionsMonitor.CurrentValue.Returns(new NpgsqlOperationStorageOptions());
+
+        var connectionFactory = new NpgsqlDataSourceConnectionFactory(_dataSource);
+
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        _storage = new NpgsqlOperationStorage(
+            connectionFactory,
+            optionsMonitor,
+            timeProvider,
+            new NullLogger<NpgsqlOperationStorage>(),
+            "asd"
+        );
     }
 
     [OneTimeTearDown]
@@ -46,66 +61,80 @@ public sealed class NpgsqlOperationStorageTests
     }
 
     [Test]
-    public async Task GetOrAdd_OperationDoesntExist_ReturnsAddedOperation()
+    public async Task ScheduleOperationAsync_OperationDoesntExist_AddsNewOperation()
     {
         // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
+        var expectedOperationId = Guid.CreateVersion7();
+        var expectedQueue = "any";
+        var expectedOperationArgs = new TestOperationArgs(10);
 
         // Act
-        var returnedOperation = await _storage.GetOrAdd(
+        await _storage.ScheduleOperationAsync(
             TestOperationDefinition.Instance,
-            operation
+            expectedQueue,
+            expectedOperationId,
+            expectedOperationArgs
         );
 
         // Assert
-        returnedOperation.Discriminator.ShouldBe(operation.Discriminator);
-        returnedOperation.Id.ShouldBe(operation.Id);
-        returnedOperation.Args.ShouldBe(operation.Args);
-        returnedOperation.SerializedInterResults.ShouldBe(operation.SerializedInterResults);
+        var operation = await _storage.GetByIdOrDefaultAsync(
+            TestOperationDefinition.Instance,
+            expectedOperationId
+        );
+
+        operation.ShouldNotBeNull();
+        operation.Type.ShouldBe(TestOperationDefinition.Instance.Type);
+        operation.Id.ShouldBe(expectedOperationId);
+        operation.Args.ShouldBe(expectedOperationArgs);
+        operation.Queue.ShouldBe(expectedQueue);
+        operation.State.ShouldBeOfType<OperationState<TestOperationResult>.Active>();
+        operation.RetryCount.ShouldBe(0);
     }
 
     [Test]
-    public async Task GetOrAdd_OperationAlreadyExists_ReturnsExisted()
+    public async Task ScheduleOperationAsync_OperationAlreadyExists_NothingHappens()
     {
         // Arrange
-        var operation1 = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
+        var expectedOperationId = Guid.CreateVersion7();
+        var expectedQueue = "any";
+        var expectedOperationArgs = new TestOperationArgs(10);
 
-        var operation2 = TestOperationDefinition.Instance.NewOperation(
-            operation1.Id,
-            new TestOperationArgs(20),
-            DateTime.UtcNow
-        );
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation1);
-
-        // Act
-        var returnedOperation = await _storage.GetOrAdd(
+        await _storage.ScheduleOperationAsync(
             TestOperationDefinition.Instance,
-            operation2
+            expectedQueue,
+            expectedOperationId,
+            expectedOperationArgs
+        );
+        // Act
+        await _storage.ScheduleOperationAsync(
+            TestOperationDefinition.Instance,
+            expectedQueue,
+            expectedOperationId,
+            new TestOperationArgs(Arg1: 200)
         );
 
         // Assert
-        returnedOperation.Discriminator.ShouldBe(operation1.Discriminator);
-        returnedOperation.Id.ShouldBe(operation1.Id);
-        returnedOperation.Args.ShouldBe(operation1.Args);
-        returnedOperation.SerializedInterResults.ShouldBe(operation1.SerializedInterResults);
+        var operation = await _storage.GetByIdOrDefaultAsync(
+            TestOperationDefinition.Instance,
+            expectedOperationId
+        );
+
+        operation.ShouldNotBeNull();
+        operation.Type.ShouldBe(TestOperationDefinition.Instance.Type);
+        operation.Id.ShouldBe(expectedOperationId);
+        operation.Args.ShouldBe(expectedOperationArgs);
+        operation.Queue.ShouldBe(expectedQueue);
+        operation.State.ShouldBeOfType<OperationState<TestOperationResult>.Active>();
+        operation.RetryCount.ShouldBe(0);
     }
 
     [Test]
-    public async Task GetOrDefault_OperationDoesntExist_ReturnsNull()
+    public async Task GetOrDefaultAsync_OperationDoesntExist_ReturnsNull()
     {
         // Act
-        var returnedOperation = await _storage.GetByIdOrDefault(
+        var returnedOperation = await _storage.GetByIdOrDefaultAsync(
             TestOperationDefinition.Instance,
-            OperationId.NewGuid()
+            Guid.CreateVersion7()
         );
 
         // Assert
@@ -113,635 +142,176 @@ public sealed class NpgsqlOperationStorageTests
     }
 
     [Test]
-    public async Task GetOrDefault_OperationExists_ReturnsOperation()
+    public async Task AddInnerResultsAsync_OperationExist_Adds()
     {
         // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
+        var operationType = TestOperationDefinition.Instance.Type;
+        var expectedOperationId = Guid.CreateVersion7();
+        var serializedOperationId = TestOperationDefinition.Instance.SerializeId(
+            expectedOperationId
+        );
+        var expectedQueue = "any";
+        var expectedOperationArgs = new TestOperationArgs(10);
+
+        await _storage.ScheduleOperationAsync(
+            TestOperationDefinition.Instance,
+            expectedQueue,
+            expectedOperationId,
+            expectedOperationArgs
+        );
+
+        var innerResult = FirstInnerResultDefinition.Instance.NewInnerResult(
+            new FirstInnerResultValue(Guid.NewGuid()),
             DateTime.UtcNow
         );
 
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
+        var serializedInnerResult = FirstInnerResultDefinition.Instance.Serialize(innerResult);
 
         // Act
-        var returnedOperation = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance,
-            operation.Id
+        await _storage.AddInnerResultsAsync(
+            operationType,
+            serializedOperationId,
+            [serializedInnerResult]
         );
 
         // Assert
-        returnedOperation.ShouldNotBeNull();
-        returnedOperation.Discriminator.ShouldBe(operation.Discriminator);
-        returnedOperation.Id.ShouldBe(operation.Id);
-        returnedOperation.Args.ShouldBe(operation.Args);
-        returnedOperation.SerializedInterResults.ShouldBe(operation.SerializedInterResults);
-    }
-
-    [Test]
-    public async Task AddInterResult_OperationDoesntExist_Throws()
-    {
-        // Arrange
-        var interResult = FirstInterResultDefinition.Instance.NewInterResult(
-            new FirstInterResultValue(Guid.NewGuid())
+        var innerResultsFromStorage = await _storage.GetAllInnerResultsAsync(
+            operationType,
+            serializedOperationId
         );
 
-        var serializedInterResult = FirstInterResultDefinition.Instance.Serialize(interResult);
-
-        // Act
-        var action = () =>
-            _storage.AddInterResult(
-                TestOperationDefinition.Instance.Discriminator,
-                OperationId.NewGuid(),
-                serializedInterResult
-            );
-
-        // Assert
-        await action.ShouldThrowAsync<InvalidOperationException>();
-    }
-
-    [Test]
-    public async Task AddInterResult_OperationExist_Adds()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var interResult = FirstInterResultDefinition.Instance.NewInterResult(
-            new FirstInterResultValue(Guid.NewGuid())
-        );
-
-        var serializedInterResult = FirstInterResultDefinition.Instance.Serialize(interResult);
-
-        // Act
-        await _storage.AddInterResult(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id,
-            serializedInterResult
-        );
-
-        // Assert
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance,
-            operation.Id
-        );
-
-        operationFromStorage.ShouldNotBeNull();
-        operationFromStorage.SerializedInterResults.ShouldHaveSingleItem();
-        operationFromStorage
-            .SerializedInterResults.Single()
+        innerResultsFromStorage.ShouldNotBeNull();
+        innerResultsFromStorage
+            .Single()
             .ShouldSatisfyAllConditions(
-                resultFromStorage =>
-                    resultFromStorage.Discriminator.ShouldBe(
-                        FirstInterResultDefinition.Instance.Discriminator
+                fromStorage => fromStorage.Type.ShouldBe(FirstInnerResultDefinition.Instance.Type),
+                fromStorage => fromStorage.Id.ShouldBeNull(),
+                fromStorage => fromStorage.Value.ShouldBe(serializedInnerResult.Value),
+                fromStorage =>
+                    (serializedInnerResult.CreatedAt - fromStorage.CreatedAt).ShouldBeLessThan(
+                        TimeSpan.FromMicroseconds(1)
                     ),
-                resultFromStorage => resultFromStorage.Key.ShouldBeNull(),
-                resultFromStorage => resultFromStorage.Value.ShouldBe(serializedInterResult.Value)
+                fromStorage => fromStorage.UpdatedAt.ShouldBeNull()
             );
     }
 
     [Test]
-    public async Task AddInterResult_NotKeyedResult_Idempotent()
+    public async Task AddInnerResultsAsync_ResultWithOtherTypeExists_Adds()
     {
         // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
+        var operationType = TestOperationDefinition.Instance.Type;
+        var expectedOperationId = Guid.CreateVersion7();
+        var serializedOperationId = TestOperationDefinition.Instance.SerializeId(
+            expectedOperationId
+        );
+        var expectedQueue = "any";
+        var expectedOperationArgs = new TestOperationArgs(10);
+
+        await _storage.ScheduleOperationAsync(
+            TestOperationDefinition.Instance,
+            expectedQueue,
+            expectedOperationId,
+            expectedOperationArgs
+        );
+
+        var firstInnerResult = FirstInnerResultDefinition.Instance.NewInnerResult(
+            new FirstInnerResultValue(Guid.NewGuid()),
             DateTime.UtcNow
         );
 
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var interResult = FirstInterResultDefinition.Instance.NewInterResult(
-            new FirstInterResultValue(Guid.NewGuid())
+        var serializedFirstInnerResult = FirstInnerResultDefinition.Instance.Serialize(
+            firstInnerResult
         );
 
-        var serializedInterResult = FirstInterResultDefinition.Instance.Serialize(interResult);
+        await _storage.AddInnerResultsAsync(
+            operationType,
+            serializedOperationId,
+            [serializedFirstInnerResult]
+        );
+
+        var secondInnerResult = SecondInnerResultDefinition.Instance.NewInnerResult(
+            199.125,
+            DateTime.UtcNow
+        );
+
+        var serializedSecondInnerResult = SecondInnerResultDefinition.Instance.Serialize(
+            secondInnerResult
+        );
 
         // Act
-        await _storage.AddInterResult(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id,
-            serializedInterResult
-        );
-
-        await _storage.AddInterResult(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id,
-            serializedInterResult
+        await _storage.AddInnerResultsAsync(
+            operationType,
+            serializedOperationId,
+            [serializedSecondInnerResult]
         );
 
         // Assert
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance,
-            operation.Id
+        var innerResultsFromStorage = await _storage.GetAllInnerResultsAsync(
+            operationType,
+            serializedOperationId
         );
 
-        operationFromStorage.ShouldNotBeNull();
-        operationFromStorage.SerializedInterResults.ShouldHaveSingleItem();
-        operationFromStorage
-            .SerializedInterResults.Single()
+        innerResultsFromStorage.ShouldNotBeNull();
+        innerResultsFromStorage.Length.ShouldBe(2);
+        innerResultsFromStorage
+            .Single(x => x.Type == firstInnerResult.Type)
             .ShouldSatisfyAllConditions(
-                resultFromStorage =>
-                    resultFromStorage.Discriminator.ShouldBe(
-                        FirstInterResultDefinition.Instance.Discriminator
-                    ),
-                resultFromStorage => resultFromStorage.Key.ShouldBeNull(),
-                resultFromStorage => resultFromStorage.Value.ShouldBe(serializedInterResult.Value)
+                fromStorage => fromStorage.Type.ShouldBe(firstInnerResult.Type),
+                fromStorage => fromStorage.Id.ShouldBeNull(),
+                fromStorage => fromStorage.Value.ShouldBe(serializedFirstInnerResult.Value)
             );
-    }
-
-    [Test]
-    public async Task AddInterResult_KeyedResult_Idempotent()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var interResult = ThirdInterResultDefinition.Instance.NewInterResult(10, Guid.NewGuid());
-
-        var serializedInterResult = ThirdInterResultDefinition.Instance.Serialize(interResult);
-
-        // Act
-        await _storage.AddInterResult(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id,
-            serializedInterResult
-        );
-
-        await _storage.AddInterResult(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id,
-            serializedInterResult
-        );
-
-        // Assert
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance,
-            operation.Id
-        );
-
-        operationFromStorage.ShouldNotBeNull();
-        operationFromStorage.SerializedInterResults.ShouldHaveSingleItem();
-        operationFromStorage
-            .SerializedInterResults.Single()
+        innerResultsFromStorage
+            .Single(x => x.Type == secondInnerResult.Type)
             .ShouldSatisfyAllConditions(
-                resultFromStorage =>
-                    resultFromStorage.Discriminator.ShouldBe(
-                        ThirdInterResultDefinition.Instance.Discriminator
-                    ),
-                resultFromStorage => resultFromStorage.Key.ShouldBe(serializedInterResult.Key),
-                resultFromStorage => resultFromStorage.Value.ShouldBe(serializedInterResult.Value)
+                fromStorage => fromStorage.Type.ShouldBe(secondInnerResult.Type),
+                fromStorage => fromStorage.Id.ShouldBeNull(),
+                fromStorage => fromStorage.Value.ShouldBe(serializedSecondInnerResult.Value)
             );
     }
 
     [Test]
-    public async Task AddInterResult_ResultWithOtherDiscriminatorExists_Adds()
+    public async Task AddInnerResultsAsync_ResultExists_Throws()
     {
         // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
+        var operationType = TestOperationDefinition.Instance.Type;
+        var expectedOperationId = Guid.CreateVersion7();
+        var serializedOperationId = TestOperationDefinition.Instance.SerializeId(
+            expectedOperationId
         );
+        var expectedQueue = "any";
+        var expectedOperationArgs = new TestOperationArgs(10);
 
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var firstInterResult = FirstInterResultDefinition.Instance.NewInterResult(
-            new FirstInterResultValue(Guid.NewGuid())
-        );
-
-        var serializedFirstInterResult = FirstInterResultDefinition.Instance.Serialize(
-            firstInterResult
-        );
-
-        await _storage.AddInterResult(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id,
-            serializedFirstInterResult
-        );
-
-        var secondInterResult = SecondInterResultDefinition.Instance.NewInterResult(199.125);
-        var serializedSecondInterResult = SecondInterResultDefinition.Instance.Serialize(
-            secondInterResult
-        );
-
-        // Act
-        await _storage.AddInterResult(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id,
-            serializedSecondInterResult
-        );
-
-        // Assert
-        var operationFromStorage = await _storage.GetByIdOrDefault(
+        await _storage.ScheduleOperationAsync(
             TestOperationDefinition.Instance,
-            operation.Id
+            expectedQueue,
+            expectedOperationId,
+            expectedOperationArgs
         );
 
-        operationFromStorage.ShouldNotBeNull();
-        operationFromStorage.SerializedInterResults.Count.ShouldBe(2);
-        operationFromStorage
-            .SerializedInterResults.Single(x => x.Discriminator == firstInterResult.Discriminator)
-            .ShouldSatisfyAllConditions(
-                resultFromStorage =>
-                    resultFromStorage.Discriminator.ShouldBe(firstInterResult.Discriminator),
-                resultFromStorage => resultFromStorage.Key.ShouldBeNull(),
-                resultFromStorage =>
-                    resultFromStorage.Value.ShouldBe(serializedFirstInterResult.Value)
-            );
-        operationFromStorage
-            .SerializedInterResults.Single(x => x.Discriminator == secondInterResult.Discriminator)
-            .ShouldSatisfyAllConditions(
-                resultFromStorage =>
-                    resultFromStorage.Discriminator.ShouldBe(secondInterResult.Discriminator),
-                resultFromStorage => resultFromStorage.Key.ShouldBeNull(),
-                resultFromStorage =>
-                    resultFromStorage.Value.ShouldBe(serializedSecondInterResult.Value)
-            );
-    }
-
-    [Test]
-    public async Task AddInterResult_ResultWithOtherValueExists_Throws()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
+        var firstInnerResult = FirstInnerResultDefinition.Instance.NewInnerResult(
+            new FirstInnerResultValue(Guid.NewGuid()),
             DateTime.UtcNow
         );
 
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var interResult1 = FirstInterResultDefinition.Instance.NewInterResult(
-            new FirstInterResultValue(Guid.NewGuid())
+        var serializedFirstInnerResult = FirstInnerResultDefinition.Instance.Serialize(
+            firstInnerResult
         );
 
-        var serializedInterResult1 = FirstInterResultDefinition.Instance.Serialize(interResult1);
-
-        await _storage.AddInterResult(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id,
-            serializedInterResult1
+        await _storage.AddInnerResultsAsync(
+            operationType,
+            serializedOperationId,
+            [serializedFirstInnerResult]
         );
-
-        var interResult2 = FirstInterResultDefinition.Instance.NewInterResult(
-            new FirstInterResultValue(Guid.NewGuid())
-        );
-
-        var serializedInterResult2 = FirstInterResultDefinition.Instance.Serialize(interResult2);
 
         // Act
         var action = () =>
-            _storage.AddInterResult(
-                TestOperationDefinition.Instance.Discriminator,
-                operation.Id,
-                serializedInterResult2
+            _storage.AddInnerResultsAsync(
+                TestOperationDefinition.Instance.Type,
+                serializedOperationId,
+                [serializedFirstInnerResult]
             );
 
         // Assert
-        await action.ShouldThrowAsync<InvalidOperationException>();
-    }
-
-    [Test]
-    public async Task AddInterResult_OperationIsFinished_Throws()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        operation = operation with
-        {
-            State = OperationState.FromResult(new TestOperationResult("Hello World!")),
-        };
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var interResult = FirstInterResultDefinition.Instance.NewInterResult(
-            new FirstInterResultValue(Guid.NewGuid())
-        );
-
-        var serializedInterResult = FirstInterResultDefinition.Instance.Serialize(interResult);
-
-        // Act
-        var action = () =>
-            _storage.AddInterResult(
-                TestOperationDefinition.Instance.Discriminator,
-                operation.Id,
-                serializedInterResult
-            );
-
-        // Assert
-        await action.ShouldThrowAsync<InvalidOperationException>();
-    }
-
-    [Test]
-    public async Task AddState_NewStateIsFinishedAndOperationIsInStateCreated_Sets()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var result = new TestOperationResult(Guid.NewGuid().ToString());
-        var newState = new OperationState<TestOperationResult>.Finished(result);
-
-        // Act
-        await _storage.SetState(TestOperationDefinition.Instance, operation.Id, newState);
-
-        // Assert
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance,
-            operation.Id
-        );
-
-        operationFromStorage.ShouldNotBeNull();
-        var finishedState =
-            operationFromStorage.State.ShouldBeOfType<OperationState<TestOperationResult>.Finished>();
-        finishedState.Result.ShouldBe(result);
-    }
-
-    [Test]
-    public async Task SetState_OperationDoesntExist_Throws()
-    {
-        // Arrange
-        var operationId = OperationId.NewGuid();
-        var result = new TestOperationResult(Guid.NewGuid().ToString());
-        var newState = new OperationState<TestOperationResult>.Finished(result);
-
-        // Act
-        var action = () =>
-            _storage.SetState(TestOperationDefinition.Instance, operationId, newState);
-
-        // Assert
-        await action.ShouldThrowAsync<InvalidOperationException>();
-    }
-
-    [Test]
-    public async Task SetState_Idempotent()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var result = new TestOperationResult(Guid.NewGuid().ToString());
-        var newState = new OperationState<TestOperationResult>.Finished(result);
-
-        // Act
-        await _storage.SetState(TestOperationDefinition.Instance, operation.Id, newState);
-        await _storage.SetState(TestOperationDefinition.Instance, operation.Id, newState);
-
-        // Assert
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance,
-            operation.Id
-        );
-
-        operationFromStorage.ShouldNotBeNull();
-        var finishedState =
-            operationFromStorage.State.ShouldBeOfType<OperationState<TestOperationResult>.Finished>();
-        finishedState.Result.ShouldBe(result);
-    }
-
-    [Test]
-    public async Task SetState_NewStateIsFinishedAndOperationHasOtherResult_Throws()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var result1 = new TestOperationResult(Guid.NewGuid().ToString());
-        var state1 = new OperationState<TestOperationResult>.Finished(result1);
-
-        await _storage.SetState(TestOperationDefinition.Instance, operation.Id, state1);
-
-        var result2 = new TestOperationResult(Guid.NewGuid().ToString());
-        var state2 = new OperationState<TestOperationResult>.Finished(result2);
-
-        // Act
-        var action = () =>
-            _storage.SetState(TestOperationDefinition.Instance, operation.Id, state2);
-
-        // Assert
-        await action.ShouldThrowAsync<InvalidOperationException>();
-
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance,
-            operation.Id
-        );
-        operationFromStorage.ShouldNotBeNull();
-        var finishedState =
-            operationFromStorage.State.ShouldBeOfType<OperationState<TestOperationResult>.Finished>();
-        finishedState.Result.ShouldBe(result1);
-    }
-
-    [Test]
-    public async Task GetOrSetPollingScheduleId_Idempotent()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var scheduleId1 = new OperationPollingScheduleId(Guid.NewGuid().ToString());
-        var scheduleId2 = new OperationPollingScheduleId(Guid.NewGuid().ToString());
-
-        // Act
-        var scheduleIdFromStorage = await _storage.GetOrSetPollingScheduleId(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id,
-            scheduleId1
-        );
-
-        scheduleIdFromStorage.ShouldBe(scheduleId1);
-
-        await _storage.GetOrSetPollingScheduleId(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id,
-            scheduleId2
-        );
-
-        scheduleIdFromStorage.ShouldBe(scheduleId1);
-
-        // Assert
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id
-        );
-
-        operationFromStorage.ShouldNotBeNull();
-        operationFromStorage.PollingScheduleId.ShouldNotBeNull();
-        operationFromStorage.PollingScheduleId.ShouldBe(scheduleId1);
-    }
-
-    [Test]
-    public async Task GetOrSetPollingScheduleId_OperationIsFinished_Throws()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        operation = operation with
-        {
-            State = OperationState.FromResult(new TestOperationResult("Hello World!")),
-        };
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var scheduleId = new OperationPollingScheduleId(Guid.NewGuid().ToString());
-
-        // Act
-        var action = () =>
-            _storage.GetOrSetPollingScheduleId(
-                TestOperationDefinition.Instance.Discriminator,
-                operation.Id,
-                scheduleId
-            );
-
-        // Assert
-        await action.ShouldThrowAsync<InvalidOperationException>();
-
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id
-        );
-        operationFromStorage.ShouldNotBeNull();
-        operationFromStorage.PollingScheduleId.ShouldBeNull();
-    }
-
-    [Test]
-    public async Task GetOrSetPollingScheduleId_OperationIsFinishedAndHasPollingScheduleId_Throws()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        operation = operation with
-        {
-            PollingScheduleId = new OperationPollingScheduleId(Guid.NewGuid().ToString()),
-            State = OperationState.FromResult(new TestOperationResult("Hello World!")),
-        };
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        var scheduleId = new OperationPollingScheduleId(Guid.NewGuid().ToString());
-
-        // Act
-        var action = () =>
-            _storage.GetOrSetPollingScheduleId(
-                TestOperationDefinition.Instance.Discriminator,
-                operation.Id,
-                scheduleId
-            );
-
-        // Assert
-        await action.ShouldThrowAsync<InvalidOperationException>();
-
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id
-        );
-        operationFromStorage.ShouldNotBeNull();
-        operationFromStorage.PollingScheduleId.ShouldNotBeNull();
-        operationFromStorage.PollingScheduleId.ShouldBe(operation.PollingScheduleId);
-    }
-
-    [Test]
-    public async Task Delete_Idempotent()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        // Act
-        await _storage.Delete(TestOperationDefinition.Instance.Discriminator, operation.Id);
-
-        // Assert
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id
-        );
-        operationFromStorage.ShouldBeNull();
-
-        // Act
-        await _storage.Delete(TestOperationDefinition.Instance.Discriminator, operation.Id);
-    }
-
-    [Test]
-    public async Task Delete_OperationDoesntExist_Ok()
-    {
-        // Act
-        await _storage.Delete(
-            TestOperationDefinition.Instance.Discriminator,
-            OperationId.NewGuid()
-        );
-    }
-
-    [Test]
-    public async Task Delete_DoesntAffectOtherOperations()
-    {
-        // Arrange
-        var operation = TestOperationDefinition.Instance.NewOperation(
-            OperationId.NewGuid(),
-            new TestOperationArgs(10),
-            DateTime.UtcNow
-        );
-
-        await _storage.GetOrAdd(TestOperationDefinition.Instance, operation);
-
-        // Act
-        await _storage.Delete(
-            TestOperationDefinition.Instance.Discriminator,
-            OperationId.NewGuid()
-        );
-
-        // Assert
-        var operationFromStorage = await _storage.GetByIdOrDefault(
-            TestOperationDefinition.Instance.Discriminator,
-            operation.Id
-        );
-        operationFromStorage.ShouldNotBeNull();
+        await action.ShouldThrowAsync<PostgresException>();
     }
 }

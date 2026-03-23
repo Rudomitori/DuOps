@@ -1,7 +1,6 @@
-﻿using DuOps.Core.OperationDefinitions;
+﻿using DuOps.Core.InnerResults;
+using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
-using DuOps.Core.Operations.InterResults;
-using DuOps.Core.Operations.InterResults.Definitions;
 using DuOps.Core.Telemetry.Metrics;
 using Microsoft.Extensions.Logging;
 
@@ -12,148 +11,134 @@ internal sealed class OperationTelemetry(
     IOperationMetrics metrics
 ) : IOperationTelemetry
 {
-    public void OnOperationStartedInBackground(
+    public void OnInnerResultAdded(
         IOperationDefinition operationDefinition,
-        SerializedOperation operation
+        SerializedOperationId serializedOperationId,
+        SerializedInnerResult innerResult
     )
     {
-        logger.LogOperationStartedInBackground(
-            operationDefinition.Discriminator,
-            operation.Id,
-            operation.PollingScheduleId,
-            operation.Args
-        );
-        metrics.OnOperationStarted(operation.Discriminator);
-    }
-
-    public void OnInterResultAdded(
-        IOperationDefinition operationDefinition,
-        OperationId operationId,
-        SerializedInterResult interResult
-    )
-    {
-        if (interResult.Key is null)
+        if (innerResult.Id is null)
         {
-            logger.LogInterResultAdded(
-                operationDefinition.Discriminator,
-                operationId,
-                interResult.Discriminator,
-                interResult.Value
+            logger.LogInnerResultAdded(
+                operationDefinition.Type,
+                serializedOperationId,
+                innerResult.Type,
+                innerResult.Value
             );
         }
         else
         {
-            logger.LogInterResultAdded(
-                operationDefinition.Discriminator,
-                operationId,
-                interResult.Discriminator,
-                interResult.Key.Value,
-                interResult.Value
+            logger.LogInnerResultAdded(
+                operationDefinition.Type,
+                serializedOperationId,
+                innerResult.Type,
+                innerResult.Id.Value,
+                innerResult.Value
             );
         }
-        metrics.OnInterResultAdded(operationDefinition.Discriminator, interResult.Discriminator);
+        metrics.OnInnerResultAdded(operationDefinition.Type, innerResult.Type);
     }
 
     public void OnOperationThrewException(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
+        SerializedOperationId serializedOperationId,
         Exception exception,
         DateTimeOffset retryingAt
     )
     {
         logger.LogOperationThrewException(
             exception,
-            operationDefinition.Discriminator,
-            operationId,
+            operationDefinition.Type,
+            serializedOperationId,
             retryingAt
         );
 
-        metrics.OnOperationThrewException(operationDefinition.Discriminator, exception);
+        metrics.OnOperationThrewException(operationDefinition.Type, exception);
     }
 
     public void OnOperationFailed(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
+        SerializedOperationId serializedOperationId,
         Exception exception
     )
     {
-        logger.LogOperationFailed(exception, operationDefinition.Discriminator, operationId);
-        metrics.OnOperationThrewException(operationDefinition.Discriminator, exception);
-        metrics.OnOperationFailed(operationDefinition.Discriminator);
+        logger.LogOperationFailed(exception, operationDefinition.Type, serializedOperationId);
+        metrics.OnOperationThrewException(operationDefinition.Type, exception);
+        metrics.OnOperationFailed(operationDefinition.Type);
     }
 
     public void OnOperationWaiting(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
+        SerializedOperationId serializedOperationId,
         DateTimeOffset waitingUntil,
         string reason
     )
     {
         logger.LogOperationWaiting(
-            operationDefinition.Discriminator,
-            operationId,
+            operationDefinition.Type,
+            serializedOperationId,
             waitingUntil,
             reason
         );
-        metrics.OnOperationWaiting(operationDefinition.Discriminator, reason);
+        metrics.OnOperationWaiting(operationDefinition.Type, reason);
     }
 
-    public void OnInterResultThrewException(
+    public void OnInnerResultThrewException(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
-        IInterResultDefinition interResultDefinition,
-        SerializedInterResultKey? interResultKey,
+        SerializedOperationId serializedOperationId,
+        IInnerResultDefinition innerResultDefinition,
+        SerializedInnerResultId? innerResultKey,
         Exception exception
     )
     {
-        if (interResultKey is null)
+        if (innerResultKey is null)
         {
-            logger.LogInterResultThrewException(
+            logger.LogInnerResultThrewException(
                 exception,
-                operationDefinition.Discriminator,
-                operationId,
-                interResultDefinition.Discriminator
+                operationDefinition.Type,
+                serializedOperationId,
+                innerResultDefinition.Type
             );
         }
         else
         {
-            logger.LogInterResultThrewException(
+            logger.LogInnerResultThrewException(
                 exception,
-                operationDefinition.Discriminator,
-                operationId,
-                interResultDefinition.Discriminator,
-                interResultKey.Value
+                operationDefinition.Type,
+                serializedOperationId,
+                innerResultDefinition.Type,
+                innerResultKey.Value
             );
         }
-        metrics.OnInterResultThrewException(
-            operationDefinition.Discriminator,
-            interResultDefinition.Discriminator,
+        metrics.OnInnerResultThrewException(
+            operationDefinition.Type,
+            innerResultDefinition.Type,
             exception
         );
     }
 
     public void OnOperationYielded(
         IOperationDefinition operationDefinition,
-        OperationId operationId
+        SerializedOperationId serializedOperationId
     )
     {
-        logger.LogOperationYielded(operationDefinition.Discriminator, operationId);
+        logger.LogOperationYielded(operationDefinition.Type, serializedOperationId);
 
-        metrics.OnOperationYielded(operationDefinition.Discriminator);
+        metrics.OnOperationYielded(operationDefinition.Type);
     }
 
     public void OnOperationFinished(
         IOperationDefinition operationDefinition,
-        OperationId operationId,
+        SerializedOperationId serializedOperationId,
         SerializedOperationResult serializedResult
     )
     {
         logger.LogOperationFinished(
-            operationDefinition.Discriminator,
-            operationId,
+            operationDefinition.Type,
+            serializedOperationId,
             serializedResult
         );
 
-        metrics.OnOperationFinished(operationDefinition.Discriminator);
+        metrics.OnOperationFinished(operationDefinition.Type);
     }
 }

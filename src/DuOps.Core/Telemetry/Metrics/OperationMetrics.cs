@@ -1,15 +1,15 @@
 using System.Diagnostics.Metrics;
 using DuOps.Core.OperationDefinitions;
-using DuOps.Core.Operations.InterResults.Definitions;
 using Microsoft.Extensions.Diagnostics.Metrics;
+using InnerResultType = DuOps.Core.InnerResults.InnerResultType;
 
 namespace DuOps.Core.Telemetry.Metrics;
 
 internal sealed partial class OperationMetrics : IOperationMetrics
 {
     private readonly OperationStartedCounter _operationStartedCounter;
-    private readonly InterResultAddedCounter _interResultAddedCounter;
-    private readonly InterResultThrewExceptionCounter _interResultThrewExceptionCounter;
+    private readonly InnerResultAddedCounter _innerResultAddedCounter;
+    private readonly InnerResultThrewExceptionCounter _innerResultThrewExceptionCounter;
     private readonly OperationThrewExceptionCounter _operationThrewExceptionCounter;
     private readonly OperationWaitingsCounter _operationWaitingsCounter;
     private readonly OperationYieldedCounter _operationYieldedCounter;
@@ -20,8 +20,8 @@ internal sealed partial class OperationMetrics : IOperationMetrics
     {
         var meter = meterFactory.Create("DuOps.Operation");
         _operationStartedCounter = CreateOperationStartedCounter(meter);
-        _interResultAddedCounter = CreateInterResultAddedCounter(meter);
-        _interResultThrewExceptionCounter = CreateInterResultThrewExceptionCounter(meter);
+        _innerResultAddedCounter = CreateInnerResultAddedCounter(meter);
+        _innerResultThrewExceptionCounter = CreateInnerResultThrewExceptionCounter(meter);
         _operationThrewExceptionCounter = CreateOperationThrewExceptionCounter(meter);
         _operationWaitingsCounter = CreateOperationWaitingsCounter(meter);
         _operationYieldedCounter = CreateOperationYieldedCounter(meter);
@@ -31,13 +31,13 @@ internal sealed partial class OperationMetrics : IOperationMetrics
 
     #region OperationStarted
 
-    public void OnOperationStarted(OperationDiscriminator discriminator)
+    public void OnOperationStarted(OperationType type)
     {
-        _operationStartedCounter.Add(1, new OperationStartedCounterTags(discriminator));
+        _operationStartedCounter.Add(1, new OperationStartedCounterTags(type));
     }
 
     internal readonly record struct OperationStartedCounterTags(
-        [property: TagName("operation.discriminator")] string OperationDiscriminator
+        [property: TagName("operation.type")] string Operationtype
     );
 
     [Counter<int>(typeof(OperationStartedCounterTags), Name = "duops.operation.started")]
@@ -45,60 +45,57 @@ internal sealed partial class OperationMetrics : IOperationMetrics
 
     #endregion
 
-    #region InterResultAdded
+    #region InnerResultAdded
 
-    public void OnInterResultAdded(
-        OperationDiscriminator operationDiscriminator,
-        InterResultDiscriminator interResultDiscriminator
-    )
+    public void OnInnerResultAdded(OperationType operationType, InnerResultType innerResulttype)
     {
-        _interResultAddedCounter.Add(
+        _innerResultAddedCounter.Add(
             1,
-            new InterResultAddedCounterTags(operationDiscriminator, interResultDiscriminator)
+            new InnerResultAddedCounterTags(operationType, innerResulttype)
         );
     }
 
-    internal readonly record struct InterResultAddedCounterTags(
-        [property: TagName("operation.discriminator")] string OperationDiscriminator,
-        [property: TagName("inter_result.discriminator")] string InterResultDiscriminator
+    internal readonly record struct InnerResultAddedCounterTags(
+        [property: TagName("operation.type")] string Operationtype,
+        [property: TagName("inner_result.type")] string InnerResulttype
     );
 
-    [Counter<int>(typeof(InterResultAddedCounterTags), Name = "duops.operation.inter_result.added")]
-    internal static partial InterResultAddedCounter CreateInterResultAddedCounter(Meter meter);
+    [Counter<int>(typeof(InnerResultAddedCounterTags), Name = "duops.operation.inner_result.added")]
+    internal static partial InnerResultAddedCounter CreateInnerResultAddedCounter(Meter meter);
 
     #endregion
 
-    #region InterResultThrewException
+    #region InnerResultThrewException
 
-    public void OnInterResultThrewException(
-        OperationDiscriminator operationDiscriminator,
-        InterResultDiscriminator interResultDiscriminator,
+    public void OnInnerResultThrewException(
+        OperationType operationType,
+        InnerResultType innerResulttype,
         Exception exception
     )
     {
         // TODO: Handle AggregateException
         var exceptionTypeName = exception.GetType().Name;
-        _interResultThrewExceptionCounter.Add(
+        _innerResultThrewExceptionCounter.Add(
             1,
-            new InterResultThrewExceptionCounterTags(
-                operationDiscriminator,
-                interResultDiscriminator,
+            new InnerResultThrewExceptionCounterTags(
+                operationType,
+                innerResulttype,
                 exceptionTypeName
             )
         );
     }
 
-    internal readonly record struct InterResultThrewExceptionCounterTags(
-        [property: TagName("operation.discriminator")] string OperationDiscriminator,
-        [property: TagName("inter_result.discriminator")] string InterResultDiscriminator,
+    internal readonly record struct InnerResultThrewExceptionCounterTags(
+        [property: TagName("operation.type")] string Operationtype,
+        [property: TagName("inner_result.type")] string InnerResulttype,
         [property: TagName("exception.type.name")] string ExceptionType
     );
 
     [Counter<int>(
-        typeof(InterResultThrewExceptionCounterTags),
-        Name = "duops.operation.inter_result.threw_exception"
+        typeof(InnerResultThrewExceptionCounterTags),
+        Name = "duops.operation.inner_result.threw_exception"
     )]
-    internal static partial InterResultThrewExceptionCounter CreateInterResultThrewExceptionCounter(
+    internal static partial InnerResultThrewExceptionCounter CreateInnerResultThrewExceptionCounter(
         Meter meter
     );
 
@@ -106,16 +103,13 @@ internal sealed partial class OperationMetrics : IOperationMetrics
 
     #region OperationWaitings
 
-    public void OnOperationWaiting(OperationDiscriminator operationDiscriminator, string reason)
+    public void OnOperationWaiting(OperationType operationType, string reason)
     {
-        _operationWaitingsCounter.Add(
-            1,
-            new OperationWaitingsCounterTags(operationDiscriminator, reason)
-        );
+        _operationWaitingsCounter.Add(1, new OperationWaitingsCounterTags(operationType, reason));
     }
 
     internal readonly record struct OperationWaitingsCounterTags(
-        [property: TagName("operation.discriminator")] string OperationDiscriminator,
+        [property: TagName("operation.type")] string Operationtype,
         [property: TagName("waiting.reason")] string WaitingReason
     );
 
@@ -126,13 +120,13 @@ internal sealed partial class OperationMetrics : IOperationMetrics
 
     #region OperationYielded
 
-    public void OnOperationYielded(OperationDiscriminator discriminator)
+    public void OnOperationYielded(OperationType type)
     {
-        _operationYieldedCounter.Add(1, new OperationYieldedCounterTags(discriminator));
+        _operationYieldedCounter.Add(1, new OperationYieldedCounterTags(type));
     }
 
     internal readonly record struct OperationYieldedCounterTags(
-        [property: TagName("operation.discriminator")] string OperationDiscriminator
+        [property: TagName("operation.type")] string Operationtype
     );
 
     [Counter<int>(typeof(OperationYieldedCounterTags), Name = "duops.operation.yielded")]
@@ -142,21 +136,18 @@ internal sealed partial class OperationMetrics : IOperationMetrics
 
     #region OperationThrewException
 
-    public void OnOperationThrewException(
-        OperationDiscriminator operationDiscriminator,
-        Exception exception
-    )
+    public void OnOperationThrewException(OperationType operationType, Exception exception)
     {
         // TODO: Handle AggregateException
         var exceptionTypeName = exception.GetType().Name;
         _operationThrewExceptionCounter.Add(
             1,
-            new OperationThrewExceptionCounterTags(operationDiscriminator, exceptionTypeName)
+            new OperationThrewExceptionCounterTags(operationType, exceptionTypeName)
         );
     }
 
     internal readonly record struct OperationThrewExceptionCounterTags(
-        [property: TagName("operation.discriminator")] string OperationDiscriminator,
+        [property: TagName("operation.type")] string Operationtype,
         [property: TagName("exception.type.name")] string ExceptionType
     );
 
@@ -172,13 +163,13 @@ internal sealed partial class OperationMetrics : IOperationMetrics
 
     #region OperationFinished
 
-    public void OnOperationFinished(OperationDiscriminator discriminator)
+    public void OnOperationFinished(OperationType type)
     {
-        _operationFinishedCounter.Add(1, new OperationFinishedCounterTags(discriminator));
+        _operationFinishedCounter.Add(1, new OperationFinishedCounterTags(type));
     }
 
     internal readonly record struct OperationFinishedCounterTags(
-        [property: TagName("operation.discriminator")] string OperationDiscriminator
+        [property: TagName("operation.type")] string Operationtype
     );
 
     [Counter<int>(typeof(OperationFinishedCounterTags), Name = "duops.operation.finished")]
@@ -188,13 +179,13 @@ internal sealed partial class OperationMetrics : IOperationMetrics
 
     #region OperationFailed
 
-    public void OnOperationFailed(OperationDiscriminator operationDiscriminator)
+    public void OnOperationFailed(OperationType operationType)
     {
-        _operationFailedCounter.Add(1, new OperationFailedCounterTags(operationDiscriminator));
+        _operationFailedCounter.Add(1, new OperationFailedCounterTags(operationType));
     }
 
     internal readonly record struct OperationFailedCounterTags(
-        [property: TagName("operation.discriminator")] string OperationDiscriminator
+        [property: TagName("operation.type")] string Operationtype
     );
 
     [Counter<int>(typeof(OperationFailedCounterTags), Name = "duops.operation.failed")]

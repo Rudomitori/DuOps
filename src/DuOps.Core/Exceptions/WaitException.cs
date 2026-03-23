@@ -6,7 +6,7 @@ public sealed class WaitException : DuOpsException
 
     public TimeSpan? Duration { get; }
 
-    public DateTimeOffset? Until { get; }
+    public DateTime? Until { get; }
 
     public WaitException(string reason, TimeSpan duration)
         : base($"Operation waiting {duration:c} because {reason}")
@@ -15,7 +15,7 @@ public sealed class WaitException : DuOpsException
         Duration = duration;
     }
 
-    public WaitException(string reason, DateTimeOffset until)
+    public WaitException(string reason, DateTime until)
         : base($"Operation waiting until {until:u} because {reason}")
     {
         Reason = reason;

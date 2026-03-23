@@ -1,32 +1,26 @@
 using DuOps.Core.OperationDefinitions;
-using DuOps.Core.Operations.InterResults.Definitions;
+using InnerResultType = DuOps.Core.InnerResults.InnerResultType;
 
 namespace DuOps.Core.Telemetry.Metrics;
 
 public interface IOperationMetrics
 {
-    void OnOperationStarted(OperationDiscriminator discriminator);
+    void OnOperationStarted(OperationType type);
 
-    void OnInterResultAdded(
-        OperationDiscriminator operationDiscriminator,
-        InterResultDiscriminator interResultDiscriminator
-    );
+    void OnInnerResultAdded(OperationType operationType, InnerResultType innerResulttype);
 
-    void OnOperationThrewException(
-        OperationDiscriminator operationDiscriminator,
+    void OnOperationThrewException(OperationType operationType, Exception exception);
+
+    void OnOperationWaiting(OperationType operationType, string reason);
+
+    void OnOperationFailed(OperationType operationType);
+
+    void OnInnerResultThrewException(
+        OperationType operationType,
+        InnerResultType innerResulttype,
         Exception exception
     );
 
-    void OnOperationWaiting(OperationDiscriminator operationDiscriminator, string reason);
-
-    void OnOperationFailed(OperationDiscriminator operationDiscriminator);
-
-    void OnInterResultThrewException(
-        OperationDiscriminator operationDiscriminator,
-        InterResultDiscriminator interResultDiscriminator,
-        Exception exception
-    );
-
-    void OnOperationYielded(OperationDiscriminator discriminator);
-    void OnOperationFinished(OperationDiscriminator discriminator);
+    void OnOperationYielded(OperationType type);
+    void OnOperationFinished(OperationType type);
 }

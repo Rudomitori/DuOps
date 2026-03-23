@@ -1,7 +1,4 @@
-﻿using DuOps.Core.OperationDefinitions;
-using DuOps.Core.OperationManagers;
-using DuOps.Core.OperationPollers;
-using DuOps.Core.Registry;
+﻿using DuOps.Core.Registry;
 using DuOps.Core.Telemetry;
 using DuOps.Core.Telemetry.Metrics;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,35 +10,20 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddDuOps(
         this IServiceCollection services,
-        Action<DuOpsOptionsBuilder> configure
+        Action<DuOpsBuilder> configure
     )
     {
-        services.TryAddScoped<IOperationManager, OperationManager>();
-        services.TryAddScoped<IOperationPoller, OperationPoller>();
+        services.TryAddSingleton(TimeProvider.System);
 
-        services.TryAddSingleton<IOperationDefinitionRegistry, OperationDefinitionRegistry>();
+        var registry = new OperationRegistry();
 
-        services.TryAddSingleton<IOperationTelemetry, OperationTelemetry>();
-        services.TryAddSingleton<IOperationMetrics, OperationMetrics>();
+        services.AddSingleton(registry);
 
-        var builder = new DuOpsOptionsBuilder(services);
+        services.AddSingleton<IOperationTelemetry, OperationTelemetry>();
+        services.AddSingleton<IOperationMetrics, OperationMetrics>();
+
+        var builder = new DuOpsBuilder(services, registry);
         configure(builder);
-
-        return services;
-    }
-
-    public static IServiceCollection AddDuOpsOperation<TArgs, TResult, TImplementation>(
-        this IServiceCollection services,
-        IOperationDefinition<TArgs, TResult> definition
-    )
-        where TImplementation : class, IOperationImplementation<TArgs, TResult>
-    {
-        services.TryAddSingleton(definition);
-        services.TryAddScoped<IOperationImplementation<TArgs, TResult>, TImplementation>();
-        services.TryAddSingleton<
-            IOperationDefinitionRegistryItem,
-            OperationDefinitionRegistryItem<TArgs, TResult>
-        >();
 
         return services;
     }

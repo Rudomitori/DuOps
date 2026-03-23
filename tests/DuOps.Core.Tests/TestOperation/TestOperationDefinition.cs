@@ -1,25 +1,19 @@
-using System.Text.Json;
 using DuOps.Core.OperationDefinitions;
-using DuOps.Core.OperationDefinitions.RetryPolicies;
+using DuOps.Core.Serializers;
 
 namespace DuOps.Core.Tests.TestOperation;
 
 public sealed class TestOperationDefinition
-    : IOperationDefinition<TestOperationArgs, TestOperationResult>
+    : IOperationDefinition<Guid, TestOperationArgs, TestOperationResult>
 {
     public static readonly TestOperationDefinition Instance = new();
 
-    public OperationDiscriminator Discriminator { get; } = new("TestOperation");
+    public OperationType Type { get; } = new("TestOperation");
 
-    public IOperationRetryPolicy RetryPolicy => ZeroOperationRetryingPolicy.Instance;
+    public ISerializer<Guid> IdSerializer => GuidSerializer.Instance;
 
-    public string SerializeArgs(TestOperationArgs args) => JsonSerializer.Serialize(args);
-
-    public TestOperationArgs DeserializeArgs(string serializedArgs) =>
-        JsonSerializer.Deserialize<TestOperationArgs>(serializedArgs)!;
-
-    public string SerializeResult(TestOperationResult result) => JsonSerializer.Serialize(result);
-
-    public TestOperationResult DeserializeResult(string serializedResult) =>
-        JsonSerializer.Deserialize<TestOperationResult>(serializedResult)!;
+    public ISerializer<TestOperationArgs> ArgsSerializer { get; } =
+        JsonSerializer<TestOperationArgs>.Default;
+    public ISerializer<TestOperationResult> ResultSerializer { get; } =
+        JsonSerializer<TestOperationResult>.Default;
 }

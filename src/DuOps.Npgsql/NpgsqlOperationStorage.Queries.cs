@@ -1,83 +1,73 @@
-using System.Diagnostics;
 using Dapper;
+using DuOps.Core.InnerResults;
 using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
-using DuOps.Core.Operations.InterResults;
 using DuOps.Npgsql.Dtos;
 
 namespace DuOps.Npgsql;
 
 internal static class NpgsqlOperationStorageQueries
 {
-    private const string DtoFields = """
-            discriminator as "Discriminator",
-            id as "Id",
-            polling_schedule_id as "PollingScheduleId",
-            started_at as "StartedAt",
-            args as "Args",
-            state as "State",
-            result as "Result",
-            waiting_until as "WaitingUntil",
-            retrying_at as "RetryingAt",
-            retry_count as "RetryCount",
-            fail_reason as "FailReason",
-            inter_results as "InterResults"
-        """;
-
     internal static CommandDefinition GetById(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
+        OperationType type,
+        SerializedOperationId serializedOperationId,
         CancellationToken cancellationToken
     )
     {
         return new CommandDefinition(
-            $"""
+            // lang=sql
+            """
+            -- OperationStorage.GetById
             SELECT
-            {DtoFields}
+                type as "type",
+                id as "Id",
+                queue as "Queue",
+                scheduled_at as "ScheduledAt",
+                args as "Args",
+                created_at as "CreatedAt",
+                finished_at as "FinishedAt",
+                state as "State",
+                result as "Result",
+                fail_reason as "FailReason",
+                retry_count as "RetryCount"
             FROM duops_operations
             WHERE
-                discriminator = @discriminator
+                type = @type
                 AND id = @id
             """,
-            new { discriminator = discriminator.Value, id = operationId.Value },
+            new { type = type.Value, id = serializedOperationId.Value },
             cancellationToken: cancellationToken
         );
     }
 
-    internal static CommandDefinition GetOrAdd(
+    internal static CommandDefinition ScheduleOperation(
         OperationDto dto,
         CancellationToken cancellationToken
     )
     {
         return new CommandDefinition(
+            // lang=sql
             """
+            -- OperationStorage.ScheduleOperation
             INSERT INTO duops_operations (
-                discriminator, 
+                type,
                 id,
-                polling_schedule_id,
-                started_at,
+                queue,
+                scheduled_at,
                 args,
+                created_at,
                 state,
-                result,
-                waiting_until,
-                retrying_at,
-                retry_count,
-                fail_reason,
-                inter_results
+                retry_count
             )
             VALUES (
-                @Discriminator, 
+                @Type, 
                 @Id,
-                @PollingScheduleId,
-                @StartedAt,
-                @Args::jsonb,
-                @State,
-                @Result::jsonb,
-                @WaitingUntil,
-                @RetryingAt,
-                @RetryCount,
-                @FailReason,
-                @InterResults::jsonb
+                @Queue,
+                @ScheduledAt,
+                @Args,
+                @CreatedAt,
+                10, -- Active
+                0
             )
             ON CONFLICT DO NOTHING
             """,
@@ -86,239 +76,283 @@ internal static class NpgsqlOperationStorageQueries
         );
     }
 
-    internal static CommandDefinition AddNotKeyedInterResult(
-        OperationDiscriminator operationDiscriminator,
-        OperationId operationId,
-        SerializedInterResult interResult,
+    internal static CommandDefinition AddInnerResults(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        IReadOnlyList<SerializedInnerResult> innerResults,
         CancellationToken cancellationToken
     )
     {
         return new CommandDefinition(
-            $"""
-            UPDATE duops_operations
-            SET inter_results = CASE
-                    WHEN state in (40, 50) -- Finished or Failed
-                        THEN inter_results
-                    WHEN inter_results[@result_discriminator] IS NULL 
-                        THEN jsonb_set(
-                            inter_results,
-                            array[@result_discriminator],
-                            to_jsonb(@value)
-                        )
-                    ELSE inter_results
-                END 
-            WHERE discriminator = @discriminator AND id = @id
-            RETURNING {DtoFields}
-            """,
-            new
-            {
-                discriminator = operationDiscriminator.Value,
-                id = operationId.Value,
-                result_discriminator = interResult.Discriminator.Value,
-                value = interResult.Value.Value,
-            },
-            cancellationToken: cancellationToken
-        );
-    }
-
-    internal static CommandDefinition AddKeyedInterResult(
-        OperationDiscriminator operationDiscriminator,
-        OperationId operationId,
-        SerializedInterResult interResult,
-        CancellationToken cancellationToken
-    )
-    {
-        Debug.Assert(interResult.Key is not null);
-
-        return new CommandDefinition(
-            $"""
-            UPDATE duops_operations
-            SET inter_results = CASE
-                    WHEN state in (40, 50) -- Finished or Failed
-                        THEN inter_results  
-                    WHEN inter_results[@result_discriminator][@key] IS NOT NULL 
-                        THEN inter_results
-                    WHEN jsonb_typeof(inter_results[@result_discriminator]) = 'object' 
-                        THEN jsonb_set(
-                            inter_results,
-                            array[@result_discriminator, @key],
-                            to_jsonb(@value)
-                        )
-                    WHEN inter_results[@result_discriminator] IS NULL 
-                        THEN jsonb_set(
-                            inter_results,
-                            array[@result_discriminator],
-                            jsonb_build_object(@key, to_jsonb(@value))
-                        )
-                    ELSE inter_results 
-                END 
-            WHERE discriminator = @discriminator AND id = @id
-            RETURNING {DtoFields}
-            """,
-            new
-            {
-                discriminator = operationDiscriminator.Value,
-                id = operationId.Value,
-                result_discriminator = interResult.Discriminator.Value,
-                key = interResult.Key.Value.Value,
-                value = interResult.Value.Value,
-            },
-            cancellationToken: cancellationToken
-        );
-    }
-
-    internal static CommandDefinition SetState(
-        OperationDiscriminator operationDiscriminator,
-        OperationId operationId,
-        SerializedOperationState state,
-        CancellationToken cancellationToken
-    )
-    {
-        return state switch
-        {
-            SerializedOperationState.Created => throw new InvalidOperationException(
-                $"Operation.State can not be set to {nameof(SerializedOperationState.Created)}"
-            ),
-            SerializedOperationState.Waiting waiting => new CommandDefinition(
-                $"""
-                UPDATE duops_operations
-                SET 
-                    -- state is Finished or Failed
-                    state = CASE WHEN state in (40, 50) THEN state ELSE @state END,
-                    waiting_until = CASE WHEN state in (40, 50) THEN waiting_until ELSE @waiting_until END,
-                    retry_count = CASE WHEN state in (40, 50) THEN retry_count ELSE null END,
-                    retrying_at = CASE WHEN state in (40, 50) THEN retrying_at ELSE null END
-                WHERE discriminator = @discriminator AND id = @id
-                RETURNING
-                {DtoFields}
-                """,
-                new
-                {
-                    discriminator = operationDiscriminator.Value,
-                    id = operationId.Value,
-                    state = OperationStateDto.Waiting,
-                    waiting_until = waiting.Until,
-                },
-                cancellationToken: cancellationToken
-            ),
-            SerializedOperationState.Retrying retrying => new CommandDefinition(
-                $"""
-                UPDATE duops_operations
-                SET 
-                    -- state is Finished or Failed
-                    state = CASE WHEN state in (40, 50) THEN state ELSE @state END,
-                    waiting_until = CASE WHEN state in (40, 50) THEN waiting_until ELSE null END,
-                    retry_count = CASE WHEN state in (40, 50) THEN retry_count ELSE @retry_count END,
-                    retrying_at = CASE WHEN state in (40, 50) THEN retrying_at ELSE @retrying_at END
-                WHERE discriminator = @discriminator AND id = @id
-                RETURNING
-                {DtoFields}
-                """,
-                new
-                {
-                    discriminator = operationDiscriminator.Value,
-                    id = operationId.Value,
-                    state = OperationStateDto.Retrying,
-                    retry_count = retrying.RetryCount,
-                    retrying_at = retrying.At,
-                },
-                cancellationToken: cancellationToken
-            ),
-            SerializedOperationState.Finished finished => new CommandDefinition(
-                $"""
-                UPDATE duops_operations
-                SET 
-                    -- state is Finished or Failed
-                    state = CASE WHEN state in (40, 50) THEN state ELSE @state END,
-                    waiting_until = CASE WHEN state in (40, 50) THEN waiting_until ELSE null END,
-                    retry_count = CASE WHEN state in (40, 50) THEN retry_count ELSE null END,
-                    retrying_at = CASE WHEN state in (40, 50) THEN retrying_at ELSE null END,
-                    result = CASE WHEN state in (40, 50) THEN result ELSE @result END
-                WHERE discriminator = @discriminator AND id = @id
-                RETURNING
-                {DtoFields}
-                """,
-                new
-                {
-                    discriminator = operationDiscriminator.Value,
-                    id = operationId.Value,
-                    state = OperationStateDto.Finished,
-                    result = finished.Result.Value,
-                },
-                cancellationToken: cancellationToken
-            ),
-            SerializedOperationState.Failed failed => new CommandDefinition(
-                $"""
-                UPDATE duops_operations
-                SET 
-                    -- state is Finished or Failed
-                    state = CASE WHEN state in (40, 50) THEN state ELSE @state END,
-                    waiting_until = CASE WHEN state in (40, 50) THEN waiting_until ELSE null END,
-                    retry_count = CASE WHEN state in (40, 50) THEN retry_count ELSE null END,
-                    retrying_at = CASE WHEN state in (40, 50) THEN retrying_at ELSE null END,
-                    fail_reason = CASE WHEN state in (40, 50) THEN fail_reason ELSE @fail_reason END
-                WHERE discriminator = @discriminator AND id = @id
-                RETURNING
-                {DtoFields}
-                """,
-                new
-                {
-                    discriminator = operationDiscriminator.Value,
-                    id = operationId.Value,
-                    state = OperationStateDto.Failed,
-                    fail_reason = failed.Reason,
-                },
-                cancellationToken: cancellationToken
-            ),
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(state),
-                state,
-                $"Unknown operation state {state}"
-            ),
-        };
-    }
-
-    internal static CommandDefinition GetOrSetPollingScheduleId(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
-        OperationPollingScheduleId scheduleId,
-        CancellationToken cancellationToken
-    )
-    {
-        return new CommandDefinition(
-            $"""
-            UPDATE duops_operations
-            SET polling_schedule_id = CASE
-                    -- Finished or Failed
-                    WHEN state in (40, 50) THEN polling_schedule_id
-                    ELSE coalesce(polling_schedule_id, @polling_schedule_id)
-                END
-            WHERE discriminator = @discriminator AND id = @id
-            RETURNING
-            {DtoFields}
-            """,
-            new
-            {
-                discriminator = discriminator.Value,
-                id = operationId.Value,
-                polling_schedule_id = scheduleId.Value,
-            },
-            cancellationToken: cancellationToken
-        );
-    }
-
-    public static CommandDefinition Delete(
-        OperationDiscriminator discriminator,
-        OperationId operationId,
-        CancellationToken cancellationToken = default
-    )
-    {
-        return new CommandDefinition(
+            // lang=sql
             """
-            DELETE FROM duops_operations
-            WHERE discriminator = @discriminator AND id = @id
+            -- OperationStorage.AddInnerResults
+            INSERT INTO duops_inner_results (
+               operation_type,
+               operation_id,
+               inner_result_type,
+               inner_result_id,
+               value,
+               created_at
+            )
+            SELECT
+                @OperationType,
+                @OperationId,
+                unnest(@InnerResultTypes::text[]),
+                unnest(@InnerResultIds::text[]),
+                unnest(@Values::text[]),
+                unnest(@CreatedAts::timestamptz[])
             """,
-            new { discriminator = discriminator.Value, id = operationId.Value },
+            new
+            {
+                OperationType = operationType.Value,
+                OperationId = serializedOperationId.Value,
+                InnerResultTypes = innerResults.Select(x => x.Type.Value).ToArray(),
+                InnerResultIds = innerResults.Select(x => x.Id?.Value).ToArray(),
+                Values = innerResults.Select(x => x.Value.Value).ToArray(),
+                CreatedAts = innerResults.Select(x => x.CreatedAt).ToArray(),
+            },
+            cancellationToken: cancellationToken
+        );
+    }
+
+    internal static CommandDefinition GetAllInnerResults(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        CancellationToken cancellationToken
+    )
+    {
+        return new CommandDefinition(
+            // lang=sql
+            """
+            -- OperationStorage.GetAllInnerResults
+            SELECT 
+                inner_result_type as "InnerResulttype",
+                inner_result_id as "InnerResultId",
+                value as "Value",
+                created_at as "CreatedAt",
+                updated_at as "UpdatedAt"
+            FROM duops_inner_results
+            WHERE
+                operation_type = @Operationtype
+                AND operation_id = @OperationId
+            """,
+            new { Operationtype = operationType.Value, OperationId = serializedOperationId.Value },
+            cancellationToken: cancellationToken
+        );
+    }
+
+    internal static CommandDefinition Reschedule(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        DateTime at,
+        CancellationToken cancellationToken
+    )
+    {
+        return new CommandDefinition(
+            // lang=sql
+            """
+            -- OperationStorage.Reschedule
+            UPDATE duops_operations 
+            SET 
+                scheduled_at = @At
+            WHERE 
+                type = @type
+                AND id = @Id
+            """,
+            new
+            {
+                type = operationType.Value,
+                Id = serializedOperationId.Value,
+                At = at,
+            },
+            cancellationToken: cancellationToken
+        );
+    }
+
+    internal static CommandDefinition ScheduleRetry(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        DateTime at,
+        CancellationToken cancellationToken
+    )
+    {
+        return new CommandDefinition(
+            // lang=sql
+            """
+            -- OperationStorage.ScheduleRetry
+            UPDATE duops_operations
+            SET 
+                scheduled_at = @At,
+                retry_count = retry_count + 1
+            WHERE
+                type = @type
+                AND id = @Id
+            """,
+            new
+            {
+                type = operationType.Value,
+                Id = serializedOperationId.Value,
+                At = at,
+            },
+            cancellationToken: cancellationToken
+        );
+    }
+
+    internal static CommandDefinition Complete(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        DateTime now,
+        SerializedOperationResult result,
+        CancellationToken cancellationToken
+    )
+    {
+        return new CommandDefinition(
+            // lang=sql
+            """
+            --- OperationStorage.Complete
+            UPDATE duops_operations
+            SET
+                scheduled_at = null,
+                finished_at = @Now,
+                state = 20, -- Completed
+                result = @Result
+            WHERE
+                type = @type
+                AND id = @Id
+            """,
+            new
+            {
+                type = operationType.Value,
+                Id = serializedOperationId.Value,
+                Now = now,
+                Result = result.Value,
+            },
+            cancellationToken: cancellationToken
+        );
+    }
+
+    internal static CommandDefinition Fail(
+        OperationType operationType,
+        SerializedOperationId serializedOperationId,
+        DateTime now,
+        string failReason,
+        CancellationToken cancellationToken
+    )
+    {
+        return new CommandDefinition(
+            // lang=sql
+            """
+            --- OperationStorage.Fail
+            UPDATE duops_operations
+            SET
+                scheduled_at = null,
+                finished_at = @Now,
+                state = 30, -- Failed
+                fail_reason = @FailReason
+            WHERE
+                type = @type
+                AND id = @Id
+            """,
+            new
+            {
+                type = operationType.Value,
+                Id = serializedOperationId.Value,
+                Now = now,
+                FailReason = failReason,
+            },
+            cancellationToken: cancellationToken
+        );
+    }
+
+    internal static CommandDefinition GetNextForExecution(
+        string queue,
+        TimeSpan lockDuration,
+        DateTime now,
+        CancellationToken cancellationToken
+    )
+    {
+        return new CommandDefinition(
+            // lang=sql
+            """
+            -- OperationStorage.GetNextForExecution
+            UPDATE duops_operations
+            SET
+                locked_until = @LockedUntil
+            WHERE
+                (type, id) = (
+                    SELECT type, id
+                    FROM duops_operations
+                    WHERE
+                        queue = @Queue
+                        AND state = 10 -- Active
+                        AND coalesce(locked_until, scheduled_at) < @Now
+                    FOR UPDATE SKIP LOCKED
+                    LIMIT 1
+                )
+            RETURNING
+                type as "Type",
+                id as "Id",
+                args as "Args",
+                retry_count as "RetryCount"
+            """,
+            new
+            {
+                Queue = queue,
+                LockedUntil = now + lockDuration,
+                Now = now,
+            },
+            cancellationToken: cancellationToken
+        );
+    }
+
+    internal static CommandDefinition RemoveLock(
+        OperationType type,
+        SerializedOperationId serializedOperationId,
+        CancellationToken cancellationToken
+    )
+    {
+        return new CommandDefinition(
+            // lang=sql
+            """
+            -- OperationStorage.RemoveLock
+            UPDATE duops_operations
+            SET locked_until = null
+            WHERE
+                type = @Type
+                AND id = @Id
+            """,
+            new { Type = type.Value, Id = serializedOperationId.Value },
+            cancellationToken: cancellationToken
+        );
+    }
+
+    internal static CommandDefinition ExtendLock(
+        OperationType type,
+        SerializedOperationId serializedOperationId,
+        DateTime newLockedUntil,
+        CancellationToken cancellationToken
+    )
+    {
+        return new CommandDefinition(
+            // lang=sql
+            """
+            -- OperationStorage.ExtendLock
+            UPDATE duops_operations
+            SET locked_until = CASE 
+                    WHEN locked_until IS NULL THEN NULL 
+                    ELSE @NewLockedUntil
+                END
+            WHERE
+                type = @Type
+                AND id = @Id
+            """,
+            new
+            {
+                Type = type.Value,
+                Id = serializedOperationId.Value,
+                NewLockedUntil = newLockedUntil,
+            },
             cancellationToken: cancellationToken
         );
     }

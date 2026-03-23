@@ -39,12 +39,12 @@ public sealed class OperationMetricsTests
             "duops.operation.started"
         );
 
-        operationMetrics.OnOperationStarted(TestOperationDefinition.Instance.Discriminator);
+        operationMetrics.OnOperationStarted(TestOperationDefinition.Instance.Type);
 
         var measurements = metricCollector.GetMeasurementSnapshot();
         var measurement = measurements.ShouldHaveSingleItem();
         var tag = measurement.Tags.ShouldHaveSingleItem();
-        tag.Key.ShouldBe("operation.discriminator");
-        tag.Value.ShouldBe(TestOperationDefinition.Instance.Discriminator.Value);
+        tag.Key.ShouldBe("operation.type");
+        tag.Value.ShouldBe(TestOperationDefinition.Instance.Type.Value);
     }
 }
