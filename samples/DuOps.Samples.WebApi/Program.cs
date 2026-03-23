@@ -1,6 +1,7 @@
 using DuOps.Core.DependencyInjection;
 using DuOps.Core.Storages;
 using DuOps.Npgsql;
+using DuOps.OpenTelemetry;
 using DuOps.Samples.WebApi.SampleOperation;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
@@ -9,7 +10,9 @@ using OpenTelemetry.Metrics;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
-builder.Services.AddOpenTelemetry().WithMetrics(builder => builder.AddPrometheusExporter());
+builder
+    .Services.AddOpenTelemetry()
+    .WithMetrics(builder => builder.AddDuOpsInstrumentation().AddPrometheusExporter());
 
 builder.Services.AddSingleton(serviceProvider =>
 {
