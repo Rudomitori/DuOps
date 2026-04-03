@@ -1,24 +1,27 @@
-﻿using DuOps.Core.OperationDefinitions;
+using DuOps.Core.OperationDefinitions;
 using DuOps.Core.Operations;
+using DuOps.Core.Storages;
 
-namespace DuOps.Core.Storages;
+namespace DuOps.Core.Client;
 
-public static class OperationStorageExtensions
+public static class DuOpsExtensions
 {
-    public static async Task<Operation<TId, TArgs, TResult>?> GetByIdOrDefaultAsync<
+    public static async Task<Operation<TId, TArgs, TResult>?> GetOperationByIdOrDefaultAsync<
         TId,
         TArgs,
         TResult
     >(
-        this IOperationStorage storage,
+        this IDuOpsClient client,
         IOperationDefinition<TId, TArgs, TResult> operationDefinition,
+        OperationStorageId storageId,
         TId operationId,
         CancellationToken cancellationToken = default
     )
     {
         var serializedOperationId = operationDefinition.SerializeId(operationId);
 
-        var serializedOperation = await storage.GetByIdOrDefaultAsync(
+        var serializedOperation = await client.GetOperationByIdOrDefaultAsync(
+            storageId,
             operationDefinition.Type,
             serializedOperationId,
             cancellationToken
@@ -29,8 +32,9 @@ public static class OperationStorageExtensions
     }
 
     public static Task ScheduleOperationAsync<TId, TArgs, TResult>(
-        this IOperationStorage storage,
+        this IDuOpsClient client,
         IOperationDefinition<TId, TArgs, TResult> operationDefinition,
+        OperationStorageId storageId,
         OperationQueueId queueId,
         TId operationId,
         TArgs operationArgs,
@@ -40,9 +44,10 @@ public static class OperationStorageExtensions
         var serializedOperationId = operationDefinition.SerializeId(operationId);
         var serializedOperationArgs = operationDefinition.SerializeArgs(operationArgs);
 
-        return storage.ScheduleOperationAsync(
-            operationDefinition.Type,
+        return client.ScheduleOperationAsync(
+            storageId,
             queueId,
+            operationDefinition.Type,
             serializedOperationId,
             serializedOperationArgs,
             cancellationToken

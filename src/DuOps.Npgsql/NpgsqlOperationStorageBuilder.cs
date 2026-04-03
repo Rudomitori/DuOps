@@ -1,4 +1,5 @@
 using DuOps.Core.DependencyInjection;
+using DuOps.Core.Storages;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -9,11 +10,11 @@ public class NpgsqlOperationStorageBuilder : StorageBuilder
     public OptionsBuilder<NpgsqlOperationStorageOptions> OptionsBuilder { get; }
 
     public NpgsqlOperationStorageBuilder(
-        string storageName,
+        OperationStorageId storageId,
         IServiceCollection services,
         OptionsBuilder<NpgsqlOperationStorageOptions> optionsBuilder
     )
-        : base(services, storageName)
+        : base(services, storageId)
     {
         OptionsBuilder = optionsBuilder;
     }
@@ -21,7 +22,7 @@ public class NpgsqlOperationStorageBuilder : StorageBuilder
     public void UseNpgsqlDataSource()
     {
         Services.AddKeyedSingleton<IConnectionFactory, NpgsqlDataSourceConnectionFactory>(
-            StorageName
+            StorageId
         );
     }
 }

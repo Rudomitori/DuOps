@@ -10,18 +10,16 @@ public static class ServiceCollectionExtensions
 {
     public static void AddNpgsqlOperationStorage(
         this DuOpsBuilder builder,
-        string storageName,
+        OperationStorageId storageId,
         Action<NpgsqlOperationStorageBuilder> configure
     )
     {
-        var optionsBuilder = builder.Services.AddOptions<NpgsqlOperationStorageOptions>(
-            storageName
-        );
+        var optionsBuilder = builder.Services.AddOptions<NpgsqlOperationStorageOptions>(storageId);
 
-        builder.Services.AddNpgsqlOperationStorage(storageName);
+        builder.Services.AddNpgsqlOperationStorage(storageId);
 
         var storageBuilder = new NpgsqlOperationStorageBuilder(
-            storageName,
+            storageId,
             builder.Services,
             optionsBuilder
         );
@@ -31,15 +29,15 @@ public static class ServiceCollectionExtensions
 
     private static void AddNpgsqlOperationStorage(
         this IServiceCollection services,
-        string storageName
+        OperationStorageId storageId
     )
     {
         services.AddKeyedSingleton<IOperationStorage, NpgsqlOperationStorage>(
-            storageName,
+            storageId,
             (serviceProvider, _) =>
             {
                 var connectionFactory = serviceProvider.GetRequiredKeyedService<IConnectionFactory>(
-                    storageName
+                    storageId
                 );
                 var optionsMonitor = serviceProvider.GetRequiredService<
                     IOptionsMonitor<NpgsqlOperationStorageOptions>
@@ -52,7 +50,7 @@ public static class ServiceCollectionExtensions
                     optionsMonitor,
                     timeProvider,
                     logger,
-                    storageName
+                    storageId
                 );
             }
         );

@@ -16,7 +16,7 @@ internal sealed class NpgsqlOperationStorage(
     IOptionsMonitor<NpgsqlOperationStorageOptions> optionsMonitor,
     TimeProvider timeProvider,
     ILogger<NpgsqlOperationStorage> logger,
-    string storageName
+    OperationStorageId storageId
 ) : IOperationStorage
 {
     public async IAsyncEnumerable<IOperationStorageHandle> EnumerateForExecutionAsync(
@@ -29,7 +29,7 @@ internal sealed class NpgsqlOperationStorage(
             if (cancellationToken.IsCancellationRequested)
                 yield break;
 
-            var options = optionsMonitor.Get(storageName);
+            var options = optionsMonitor.Get(storageId);
             await using var connection = await connectionFactory.GetConnectionAsync(
                 cancellationToken
             );

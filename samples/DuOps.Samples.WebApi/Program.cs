@@ -1,4 +1,5 @@
 using DuOps.Core;
+using DuOps.Core.Client;
 using DuOps.Core.DependencyInjection;
 using DuOps.Core.Storages;
 using DuOps.Npgsql;
@@ -9,6 +10,7 @@ using Npgsql;
 using OpenTelemetry.Metrics;
 
 var appOperationQueueId = new OperationQueueId("Default");
+var appOperationStorageId = new OperationStorageId("Default");
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,13 +38,13 @@ builder.Services.AddDuOps(duOpsBuilder =>
     );
 
     duOpsBuilder.AddNpgsqlOperationStorage(
-        "StorageName",
+        appOperationStorageId,
         storageBuilder =>
         {
             storageBuilder.UseNpgsqlDataSource();
 
             storageBuilder
-                .OptionsBuilder.BindConfiguration($"DuOps:{storageBuilder.StorageName}")
+                .OptionsBuilder.BindConfiguration($"DuOps:{storageBuilder.StorageId}")
                 .Configure(options =>
                 {
                     options.LockDuration = TimeSpan.FromSeconds(30);
@@ -66,15 +68,13 @@ app.UseOpenTelemetryPrometheusScrapingEndpoint();
 
 app.MapPost(
     "/api/operation/schedule",
-    async (
-        [FromKeyedServices("StorageName")] IOperationStorage operationStorage,
-        CancellationToken cancellationToken
-    ) =>
+    async (IDuOpsClient duOpsClient, CancellationToken cancellationToken) =>
     {
         var operationId = Guid.CreateVersion7();
 
-        await operationStorage.ScheduleOperationAsync(
+        await duOpsClient.ScheduleOperationAsync(
             SampleOperationHandler.Definition,
+            appOperationStorageId,
             appOperationQueueId,
             operationId,
             new SampleOperationArgs(),
@@ -87,14 +87,11 @@ app.MapPost(
 
 app.MapPost(
     "/api/operations/{id}/poll",
-    async (
-        [FromKeyedServices("StorageName")] IOperationStorage operationStorage,
-        [FromRoute] Guid id,
-        CancellationToken cancellationToken
-    ) =>
+    async (IDuOpsClient duOpsClient, [FromRoute] Guid id, CancellationToken cancellationToken) =>
     {
-        var operation = await operationStorage.GetByIdOrDefaultAsync(
+        var operation = await duOpsClient.GetOperationByIdOrDefaultAsync(
             SampleOperationHandler.Definition,
+            appOperationStorageId,
             id,
             cancellationToken
         );

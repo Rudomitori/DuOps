@@ -1,4 +1,5 @@
-﻿using DuOps.Core.Registry;
+﻿using DuOps.Core.Client;
+using DuOps.Core.Registry;
 using DuOps.Core.Telemetry;
 using DuOps.Core.Telemetry.Metrics;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,7 @@ public static class ServiceCollectionExtensions
         var registry = new OperationRegistry();
 
         services.AddSingleton(registry);
+        services.AddSingleton<IDuOpsClient, DuOpsClient>();
 
         services.AddSingleton<IOperationTelemetry, OperationTelemetry>();
         services.AddSingleton<IOperationMetrics, OperationMetrics>();

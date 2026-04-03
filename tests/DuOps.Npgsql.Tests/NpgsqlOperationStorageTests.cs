@@ -50,7 +50,7 @@ public sealed class NpgsqlOperationStorageTests
             optionsMonitor,
             timeProvider,
             new NullLogger<NpgsqlOperationStorage>(),
-            "asd"
+            new OperationStorageId("asd")
         );
     }
 
@@ -65,13 +65,15 @@ public sealed class NpgsqlOperationStorageTests
     public async Task ScheduleOperationAsync_OperationDoesntExist_AddsNewOperation()
     {
         // Arrange
-        var expectedOperationId = Guid.CreateVersion7();
+        var expectedOperationId = TestOperationDefinition.Instance.SerializeId(Guid.NewGuid());
         var expectedQueueId = new OperationQueueId("any");
-        var expectedOperationArgs = new TestOperationArgs(10);
+        var expectedOperationArgs = TestOperationDefinition.Instance.SerializeArgs(
+            new TestOperationArgs(10)
+        );
 
         // Act
         await _storage.ScheduleOperationAsync(
-            TestOperationDefinition.Instance,
+            TestOperationDefinition.Instance.Type,
             expectedQueueId,
             expectedOperationId,
             expectedOperationArgs
@@ -79,7 +81,7 @@ public sealed class NpgsqlOperationStorageTests
 
         // Assert
         var operation = await _storage.GetByIdOrDefaultAsync(
-            TestOperationDefinition.Instance,
+            TestOperationDefinition.Instance.Type,
             expectedOperationId
         );
 
@@ -88,7 +90,7 @@ public sealed class NpgsqlOperationStorageTests
         operation.Id.ShouldBe(expectedOperationId);
         operation.Args.ShouldBe(expectedOperationArgs);
         operation.QueueId.ShouldBe(expectedQueueId);
-        operation.State.ShouldBeOfType<OperationState<TestOperationResult>.Active>();
+        operation.State.ShouldBeOfType<SerializedOperationState.Active>();
         operation.RetryCount.ShouldBe(0);
     }
 
@@ -96,27 +98,29 @@ public sealed class NpgsqlOperationStorageTests
     public async Task ScheduleOperationAsync_OperationAlreadyExists_NothingHappens()
     {
         // Arrange
-        var expectedOperationId = Guid.CreateVersion7();
+        var expectedOperationId = TestOperationDefinition.Instance.SerializeId(Guid.NewGuid());
         var expectedQueueId = new OperationQueueId("any");
-        var expectedOperationArgs = new TestOperationArgs(10);
+        var expectedOperationArgs = TestOperationDefinition.Instance.SerializeArgs(
+            new TestOperationArgs(10)
+        );
 
         await _storage.ScheduleOperationAsync(
-            TestOperationDefinition.Instance,
+            TestOperationDefinition.Instance.Type,
             expectedQueueId,
             expectedOperationId,
             expectedOperationArgs
         );
         // Act
         await _storage.ScheduleOperationAsync(
-            TestOperationDefinition.Instance,
+            TestOperationDefinition.Instance.Type,
             expectedQueueId,
             expectedOperationId,
-            new TestOperationArgs(Arg1: 200)
+            TestOperationDefinition.Instance.SerializeArgs(new TestOperationArgs(Arg1: 200))
         );
 
         // Assert
         var operation = await _storage.GetByIdOrDefaultAsync(
-            TestOperationDefinition.Instance,
+            TestOperationDefinition.Instance.Type,
             expectedOperationId
         );
 
@@ -125,7 +129,7 @@ public sealed class NpgsqlOperationStorageTests
         operation.Id.ShouldBe(expectedOperationId);
         operation.Args.ShouldBe(expectedOperationArgs);
         operation.QueueId.ShouldBe(expectedQueueId);
-        operation.State.ShouldBeOfType<OperationState<TestOperationResult>.Active>();
+        operation.State.ShouldBeOfType<SerializedOperationState.Active>();
         operation.RetryCount.ShouldBe(0);
     }
 
@@ -134,8 +138,8 @@ public sealed class NpgsqlOperationStorageTests
     {
         // Act
         var returnedOperation = await _storage.GetByIdOrDefaultAsync(
-            TestOperationDefinition.Instance,
-            Guid.CreateVersion7()
+            TestOperationDefinition.Instance.Type,
+            TestOperationDefinition.Instance.SerializeId(Guid.CreateVersion7())
         );
 
         // Assert
@@ -146,16 +150,14 @@ public sealed class NpgsqlOperationStorageTests
     public async Task AddInnerResultsAsync_OperationExist_Adds()
     {
         // Arrange
-        var operationType = TestOperationDefinition.Instance.Type;
-        var expectedOperationId = Guid.CreateVersion7();
-        var serializedOperationId = TestOperationDefinition.Instance.SerializeId(
-            expectedOperationId
-        );
+        var expectedOperationId = TestOperationDefinition.Instance.SerializeId(Guid.NewGuid());
         var expectedQueueId = new OperationQueueId("any");
-        var expectedOperationArgs = new TestOperationArgs(10);
+        var expectedOperationArgs = TestOperationDefinition.Instance.SerializeArgs(
+            new TestOperationArgs(10)
+        );
 
         await _storage.ScheduleOperationAsync(
-            TestOperationDefinition.Instance,
+            TestOperationDefinition.Instance.Type,
             expectedQueueId,
             expectedOperationId,
             expectedOperationArgs
@@ -170,15 +172,15 @@ public sealed class NpgsqlOperationStorageTests
 
         // Act
         await _storage.AddInnerResultsAsync(
-            operationType,
-            serializedOperationId,
+            TestOperationDefinition.Instance.Type,
+            expectedOperationId,
             [serializedInnerResult]
         );
 
         // Assert
         var innerResultsFromStorage = await _storage.GetAllInnerResultsAsync(
-            operationType,
-            serializedOperationId
+            TestOperationDefinition.Instance.Type,
+            expectedOperationId
         );
 
         innerResultsFromStorage.ShouldNotBeNull();
@@ -200,16 +202,14 @@ public sealed class NpgsqlOperationStorageTests
     public async Task AddInnerResultsAsync_ResultWithOtherTypeExists_Adds()
     {
         // Arrange
-        var operationType = TestOperationDefinition.Instance.Type;
-        var expectedOperationId = Guid.CreateVersion7();
-        var serializedOperationId = TestOperationDefinition.Instance.SerializeId(
-            expectedOperationId
-        );
+        var expectedOperationId = TestOperationDefinition.Instance.SerializeId(Guid.NewGuid());
         var expectedQueueId = new OperationQueueId("any");
-        var expectedOperationArgs = new TestOperationArgs(10);
+        var expectedOperationArgs = TestOperationDefinition.Instance.SerializeArgs(
+            new TestOperationArgs(10)
+        );
 
         await _storage.ScheduleOperationAsync(
-            TestOperationDefinition.Instance,
+            TestOperationDefinition.Instance.Type,
             expectedQueueId,
             expectedOperationId,
             expectedOperationArgs
@@ -225,8 +225,8 @@ public sealed class NpgsqlOperationStorageTests
         );
 
         await _storage.AddInnerResultsAsync(
-            operationType,
-            serializedOperationId,
+            TestOperationDefinition.Instance.Type,
+            expectedOperationId,
             [serializedFirstInnerResult]
         );
 
@@ -241,15 +241,15 @@ public sealed class NpgsqlOperationStorageTests
 
         // Act
         await _storage.AddInnerResultsAsync(
-            operationType,
-            serializedOperationId,
+            TestOperationDefinition.Instance.Type,
+            expectedOperationId,
             [serializedSecondInnerResult]
         );
 
         // Assert
         var innerResultsFromStorage = await _storage.GetAllInnerResultsAsync(
-            operationType,
-            serializedOperationId
+            TestOperationDefinition.Instance.Type,
+            expectedOperationId
         );
 
         innerResultsFromStorage.ShouldNotBeNull();
@@ -274,16 +274,14 @@ public sealed class NpgsqlOperationStorageTests
     public async Task AddInnerResultsAsync_ResultExists_Throws()
     {
         // Arrange
-        var operationType = TestOperationDefinition.Instance.Type;
-        var expectedOperationId = Guid.CreateVersion7();
-        var serializedOperationId = TestOperationDefinition.Instance.SerializeId(
-            expectedOperationId
-        );
+        var expectedOperationId = TestOperationDefinition.Instance.SerializeId(Guid.NewGuid());
         var expectedQueueId = new OperationQueueId("any");
-        var expectedOperationArgs = new TestOperationArgs(10);
+        var expectedOperationArgs = TestOperationDefinition.Instance.SerializeArgs(
+            new TestOperationArgs(10)
+        );
 
         await _storage.ScheduleOperationAsync(
-            TestOperationDefinition.Instance,
+            TestOperationDefinition.Instance.Type,
             expectedQueueId,
             expectedOperationId,
             expectedOperationArgs
@@ -299,8 +297,8 @@ public sealed class NpgsqlOperationStorageTests
         );
 
         await _storage.AddInnerResultsAsync(
-            operationType,
-            serializedOperationId,
+            TestOperationDefinition.Instance.Type,
+            expectedOperationId,
             [serializedFirstInnerResult]
         );
 
@@ -308,7 +306,7 @@ public sealed class NpgsqlOperationStorageTests
         var action = () =>
             _storage.AddInnerResultsAsync(
                 TestOperationDefinition.Instance.Type,
-                serializedOperationId,
+                expectedOperationId,
                 [serializedFirstInnerResult]
             );
 

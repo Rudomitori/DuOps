@@ -10,12 +10,12 @@ namespace DuOps.Core.DependencyInjection;
 public abstract class StorageBuilder
 {
     public IServiceCollection Services { get; }
-    public string StorageName { get; }
+    public OperationStorageId StorageId { get; }
 
-    protected StorageBuilder(IServiceCollection services, string storageName)
+    protected StorageBuilder(IServiceCollection services, OperationStorageId storageId)
     {
         Services = services;
-        StorageName = storageName;
+        StorageId = storageId;
     }
 
     public void AddWorkers(OperationQueueId queueId, int workerCount)
@@ -25,7 +25,7 @@ public abstract class StorageBuilder
             Services.AddHostedService<Worker>(serviceProvider =>
             {
                 var operationStorage = serviceProvider.GetRequiredKeyedService<IOperationStorage>(
-                    StorageName
+                    StorageId
                 );
 
                 var logger = serviceProvider.GetRequiredService<ILogger<Worker>>();
